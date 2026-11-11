@@ -63,7 +63,7 @@
 ### 安装与启动
 
 ```bash
-git clone <your-repo-url> kindle-board
+git clone https://github.com/p4nt1um/kindle-board.git kindle-board
 cd kindle-board
 npm install
 cp secrets.example.json secrets.local.json
