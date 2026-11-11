@@ -1,0 +1,13 @@
+# 统一 LF：仓库会在 Windows 与树莓派两端 checkout，避免整文件行尾 diff。
+* text=auto eol=lf
+
+# 二进制资源显式声明，不做换行转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.bin  binary
+*.tgz  binary
+*.gz   binary
+*.xz   binary

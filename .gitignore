@@ -1,0 +1,73 @@
+# ==========================================================================
+# kindle-board · 版本控制忽略规则
+# 原则：运行时凭据与运行数据绝不入库；只提交代码、空模板与非敏感配置。
+# 提交前会自动跑 `node server/check-secrets.js`（见 .githooks/pre-commit）。
+# ==========================================================================
+
+# ---- 1. 凭据 / 本地密钥（最高优先级）------------------------------------
+# 真实凭据文件：Windows 侧 secrets.local.json，树莓派侧 secrets.json
+secrets.local.json
+secrets.json
+secrets.*.json
+!secrets.example.json          # 空值模板，必须保留在仓库里
+
+# 环境变量文件（systemd EnvironmentFile / .env）
+.env
+.env.*
+*.env
+!.env.example
+deploy/env
+deploy/env.local
+deploy/env.*
+!deploy/*.example
+
+# 本地配置覆盖（若以后加 config 覆盖机制）
+config.local.json
+config.*.local.json
+*.local.json
+!secrets.example.json
+
+# 密钥材料
+*.credential
+*.credentials
+*.key
+*.pem
+*.p12
+*.pfx
+*.pfx.pem
+*.jks
+*.keystore
+id_rsa
+id_ed25519
+
+# ---- 2. 运行时数据 --------------------------------------------------------
+# data/ 含 board 缓存、每日一图下载、素材池：可能带日程标题与账户余额
+data/
+public/media/
+*.pid
+*.log
+*.tmp
+*.bak
+*.orig
+*.swp
+*~
+
+# ---- 3. 依赖 / 构建产物 ---------------------------------------------------
+node_modules/
+coverage/
+.nyc_output/
+
+# ---- 4. 编辑器 / 操作系统 -------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.code-workspace
+
+# ---- 5. 私有笔记 / 本地运维文档（不进入公开仓库）--------------------------
+# 双轨制：README.md 是面向公开读者的项目介绍；完整的本机运维手册
+# （含内网拓扑、真机排查、账户数据）保留在 README.local.md，不入库、不推送。
+README.local*
+NOTES.md
+NOTES.local.md
+private/

@@ -1,0 +1,38 @@
+# systemd unit for Kindle Board (Raspberry Pi / Debian / Ubuntu)
+#
+#   sudo cp deploy/kindle-board.service /etc/systemd/system/kindle-board.service
+#   sudo mkdir -p /etc/kindle-board
+#   sudo cp deploy/env.example /etc/kindle-board/env && sudo chmod 600 /etc/kindle-board/env
+#   sudo systemctl daemon-reload && sudo systemctl enable --now kindle-board
+#   journalctl -u kindle-board -f
+#
+# 安装前按实际情况改：User / WorkingDirectory / ExecStart 里的 node 路径。
+# EnvironmentFile 前面的 "-" 表示文件不存在也照常启动（无凭据时只有天气/时钟/每日可用）。
+
+[Unit]
+Description=Kindle Board - local aggregator for jailbroken Kindle H5 dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/opt/kindle-board
+Environment=NODE_ENV=production
+EnvironmentFile=-/etc/kindle-board/env
+ExecStart=/usr/bin/node /opt/kindle-board/server/index.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kindle-board
+
+# 温和加固：不提权、独立 /tmp；/etc /usr /boot 只读，业务只写 data/
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/kindle-board/data
+
+[Install]
+WantedBy=multi-user.target

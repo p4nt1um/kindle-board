@@ -1,0 +1,71 @@
+{
+  "service": {
+    "instance": "Kindle Board",
+    "type": "_kindleboard._tcp.local",
+    "host": "kindle-board.local",
+    "port": 8787,
+    "path": "/"
+  },
+  "network": {
+    "preferredInterface": ["WLAN", "wlan0", "eth0", "end0"],
+    "_comment_preferredInterface": "按顺序挑第一个存在的网卡；Windows=WLAN，树莓派=wlan0/eth0/end0。也可用环境变量 KINDLE_BOARD_IFACE 覆盖，不改本文件。",
+    "excludePrefixes": ["127.", "169.254.", "172.22.", "100.", "192.168.56."],
+    "fallbackHostnames": ["kindle-board.lan", "kindle-board"],
+    "ipCheckIntervalMs": 30000
+  },
+  "board": {
+    "title": "KINDLE BOARD",
+    "refreshMs": 10800000,
+    "browserPollMs": 300000,
+    "rowPx": 12,
+    "rowBudget": 60,
+    "staleAfterRatio": 1.5,
+    "statusMode": "auto",
+    "lowBalanceThreshold": 500,
+    "zones": [
+      { "id": "shanghai", "label": "上海", "timeZone": "Asia/Shanghai" },
+      { "id": "newyork", "label": "美国东部", "timeZone": "America/New_York" }
+    ],
+    "layout": ["clock", "weather", "agenda", "quota", "daily"]
+  },
+  "blocks": {
+    "weather": {
+      "enabled": true,
+      "provider": "open-meteo",
+      "endpoint": "https://api.open-meteo.com/v1/forecast",
+      "city": "上海",
+      "latitude": 31.2304,
+      "longitude": 121.4737,
+      "timezone": "Asia/Shanghai",
+      "forecastDays": 5
+    },
+    "agenda": {
+      "enabled": true,
+      "provider": "feishu-caldav",
+      "endpoint": "https://caldav.feishu.cn",
+      "maxItems": 5,
+      "maxHrefs": 300,
+      "queryTimeRange": false,
+      "rangePastDays": 2,
+      "rangeFutureDays": 3650,
+      "timeZone": "Asia/Shanghai"
+    },
+    "quota": {
+      "enabled": true,
+      "timeoutMs": 8000,
+      "providers": ["deepseek", "kimi", "glm"],
+      "cloudProviders": ["baidu", "tencent", "aliyun"]
+    },
+    "daily": {
+      "enabled": true,
+      "showImage": true,
+      "imageMaxBytes": 400000,
+      "timeoutMs": 8000,
+      "sources": ["jinrishici", "hitokoto", "iciba", "bing", "picsum"]
+    }
+  },
+  "debug": {
+    "allowForceRefresh": false,
+    "logLevel": "info"
+  }
+}

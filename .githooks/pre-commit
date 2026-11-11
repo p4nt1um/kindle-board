@@ -1,0 +1,13 @@
+#!/bin/sh
+# kindle-board · pre-commit 防呆：扫描本次暂存的疑似凭据。
+# 由仓库级 core.hooksPath=.githooks 启用；找不到 node 时静默跳过，
+# 避免在没有 Node 的 GUI 客户端里把正常提交卡死。
+command -v node >/dev/null 2>&1 || exit 0
+[ -f server/check-secrets.js ] || exit 0
+
+node server/check-secrets.js --cached || {
+  echo "" >&2
+  echo "[pre-commit] 检测到疑似凭据，本次提交已中止。" >&2
+  echo "请先检查上方列出的文件；确认全是误报再用 git commit --no-verify。" >&2
+  exit 1
+}

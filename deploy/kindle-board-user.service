@@ -1,0 +1,39 @@
+# 使用前把路径里的 USER 换成实际用户名、YOUR-PI 换成设备主机名；模板刻意不含任何真实账户信息。
+[Unit]
+# 用户级（systemd --user）服务：不需要 root / sudo，进程以当前用户身份运行。
+# 开机自启需先执行 loginctl enable-linger USER（或配置 console autologin）。
+# 不声明 network-online.target：服务监听 0.0.0.0，且 mdns.js 每 30s 复查
+# DHCP 地址变化，网络尚未就绪时不会导致启动失败。
+Description=Kindle Board - local aggregator for jailbroken Kindle H5 dashboard (Raspberry Pi, user service)
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/home/USER/kindle-board
+EnvironmentFile=/home/USER/.config/kindle-board/env
+# 无 RTC：开机初期系统时钟可能落后几十分钟（初始值来自 timesyncd 的 clock 文件）。
+# 云 API 签名（百度 BCE 要求 UTC ±1800s）与 TLS 证书校验都依赖正确时间，
+# 所以先等 systemd-timesyncd 完成首次同步；最多等 60 秒，超时仍放行，
+# 避免断网时看板永远起不来（届时靠 Restart=always + TTL 重试自愈）。
+# 平时重启服务时 NTPSynchronized 已是 yes，这一步几乎零延迟。
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = yes ] && exit 0; sleep 2; done; echo "[kindle-board] NTP not synced within 60s, starting anyway" >&2; exit 0'
+ExecStart=/home/USER/.local/node/bin/node /home/USER/kindle-board/server/index.js
+Restart=always
+RestartSec=5
+
+# ---- 安全加固 ----
+# 新建文件默认仅属主可读写（data/ 缓存、日志、图片池）
+UMask=0077
+# 禁止任何提权路径；服务永远不能以 root 运行
+NoNewPrivileges=true
+PrivateTmp=true
+RestrictSUIDSGID=true
+# Pi 3B 只有 ~905MiB 内存，给聚合服务设上限，避免上游异常拖垮整机
+MemoryMax=320M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kindle-board
+
+[Install]
+WantedBy=default.target

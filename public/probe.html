@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=600">
+<title>Kindle 兼容性与域名发现探针</title>
+<style type="text/css">
+body { margin:0; padding:10px; width:600px; background:#FFFFFF; color:#000000;
+       font-family:serif; font-size:16px; line-height:1.5; }
+h1 { font-size:20px; font-weight:bold; margin:0 0 6px 0; padding-bottom:5px;
+     border-bottom:2px solid #000; }
+h2 { font-size:17px; font-weight:bold; margin:14px 0 5px 0; padding:2px 0;
+     border-bottom:1px solid #000; }
+table { width:100%; border-collapse:collapse; font-size:15px; }
+td { padding:3px 4px; border-bottom:1px solid #CCCCCC; vertical-align:top; }
+td.k { width:230px; font-weight:bold; }
+td.v { word-break:break-all; }
+.ok { color:#000000; font-weight:bold; }
+.bad { color:#000000; font-weight:bold; text-decoration:underline; }
+.muted { color:#555555; font-size:13px; }
+.box { border:2px solid #000; padding:8px; margin-top:10px; font-size:16px; }
+button { font-size:16px; padding:6px 14px; border:2px solid #000; background:#FFFFFF;
+         color:#000000; font-family:serif; }
+</style>
+</head>
+<body>
+
+<h1>Kindle 兼容性与域名发现探针</h1>
+<div class="muted">v1.1 · 600×800 定宽 · 纯 ES5 · 结果可直接截图保存</div>
+
+<h2>一、当前页面</h2>
+<table>
+  <tr><td class="k">地址</td><td class="v" id="href">&nbsp;</td></tr>
+  <tr><td class="k">UserAgent</td><td class="v" id="ua">&nbsp;</td></tr>
+</table>
+
+<h2>二、浏览器能力（决定前端能写成什么样）</h2>
+<table id="caps"><tr><td class="k">检测中…</td><td class="v">&nbsp;</td></tr></table>
+
+<h2>三、域名发现（逐个实测哪个地址能通）</h2>
+<div class="muted">用图片加载做跨主机名探测，不受 CORS 影响；每个最多等 5 秒。</div>
+<table id="disc"><tr><td class="k">等待中…</td><td class="v">&nbsp;</td></tr></table>
+
+<h2>四、结论</h2>
+<div class="box" id="verdict">检测中…</div>
+
+<p style="margin-top:14px;">
+  <button type="button" id="again" onclick="runAll();">重新测试</button>
+</p>
+<div class="muted">提示：Kindle 屏幕左上角+右下角同时按住可截图，图片存到设备根目录。</div>
+
+<script type="text/javascript">
+/* 严格 ES5：无 let/const、无箭头函数、无模板串、无可选链、无 fetch/Promise */
+
+function el(id) { return document.getElementById(id); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function rows(target, list) {
+  var h = '', i;
+  for (i = 0; i < list.length; i++) {
+    h += '<tr><td class="k">' + esc(list[i][0]) + '</td><td class="v">' + list[i][1] + '</td></tr>';
+  }
+  el(target).innerHTML = h;
+}
+
+function yn(v) { return v ? '<span class="ok">有</span>' : '<span class="bad">无</span>'; }
+
+function caps() {
+  var out = [];
+  var s = document.createElement('div').style;
+
+  out.push(['JavaScript 已执行', '<span class="ok">是</span>']);
+  out.push(['fetch', yn(typeof window.fetch === 'function')]);
+  out.push(['Promise', yn(typeof window.Promise === 'function')]);
+  out.push(['XMLHttpRequest', yn(typeof window.XMLHttpRequest === 'function')]);
+  out.push(['JSON', yn(typeof window.JSON === 'object')]);
+  out.push(['CSS Grid (display:grid)', yn(typeof s.grid !== 'undefined' || typeof s.msGrid !== 'undefined')]);
+  out.push(['Flexbox', yn(typeof s.flex !== 'undefined' || typeof s.webkitBoxFlex !== 'undefined')]);
+  out.push(['calc()', yn((function(){ try { s.cssText='width:calc(100% - 1px)'; return s.length > 0; } catch(e){ return false; } })())]);
+  out.push(['CSS 变量', yn(typeof window.CSS === 'object' && typeof window.CSS.supports === 'function' && window.CSS.supports('--a','0'))]);
+  out.push(['localStorage', yn((function(){ try { return !!window.localStorage; } catch(e){ return false; } })())]);
+  out.push(['sessionStorage', yn((function(){ try { return !!window.sessionStorage; } catch(e){ return false; } })())]);
+  out.push(['addEventListener', yn(typeof window.addEventListener === 'function')]);
+  out.push(['Date.now', yn(typeof Date.now === 'function')]);
+
+  rows('caps', out);
+}
+
+/* ---------- 域名发现：用 Image 跨主机名探测，避开 CORS ---------- */
+
+/* 兜底清单只在同源 /api/discovery 拉不到时才用（例如老 WebKit 的 XHR 被拦）。
+   刻意不写死任何 IP：能打开本页的地址一定能用，所以第一项取当前同源。
+   正常流程会用 /api/discovery 下发的动态候选链覆盖这里。 */
+var DEFAULT_CANDIDATES = [
+  ['当前页面同源（兜底）', window.location.protocol + '//' + window.location.host + '/ping.gif'],
+  ['mDNS .local', 'http://kindle-board.local:8787/ping.gif']
+];
+
+var candidates = DEFAULT_CANDIDATES;
+var results = [];
+var idx = 0;
+
+function ping(url, cb) {
+  var done = false;
+  var img = new Image();
+  var timer = setTimeout(function () { finish(false, '超时'); }, 5000);
+
+  function finish(ok, why) {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    img.onload = null;
+    img.onerror = null;
+    cb(ok, why);
+  }
+
+  img.onload = function () { finish(true, 'OK'); };
+  img.onerror = function () { finish(false, '解析失败/连接失败'); };
+  img.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
+}
+
+function showDisc() {
+  var list = [], i;
+  for (i = 0; i < candidates.length; i++) {
+    var r = results[i];
+    if (!r) {
+      list.push([candidates[i][0], '<span class="muted">测试中…</span>']);
+    } else if (r.ok) {
+      list.push([candidates[i][0], '<span class="ok">OK</span> <span class="muted">' + esc(r.why) + '</span>']);
+    } else {
+      list.push([candidates[i][0], '<span class="bad">失败</span> <span class="muted">' + esc(r.why) + '</span>']);
+    }
+  }
+  rows('disc', list);
+}
+
+function next() {
+  if (idx >= candidates.length) { verdict(); return; }
+  showDisc();
+  var i = idx;
+  idx++;
+  ping(candidates[i][1], function (ok, why) {
+    results[i] = { ok: ok, why: why };
+    next();
+  });
+}
+
+function verdict() {
+  var i, first = null, mdnsOk = false;
+  for (i = 0; i < results.length; i++) {
+    if (!results[i] || !results[i].ok) continue;
+    if (!first) first = candidates[i];
+    if (candidates[i][0].indexOf('mDNS') >= 0) mdnsOk = true;
+  }
+  var h;
+  if (first) {
+    var boardUrl = first[1].replace(/\/ping\.gif.*$/, '/');
+    h = '<span class="ok">请把这个地址存为书签（看板首页）：</span><br>' +
+        '<b>' + esc(boardUrl) + '</b><br>' +
+        '<span class="muted">探测页：' + esc(boardUrl + 'probe.html') + '<br>' +
+        '（' + esc(first[0]) + ' 可用）';
+    if (mdnsOk) {
+      h += ' → mDNS 直连成功，后续无需任何回退配置。';
+    } else {
+      h += ' → .local 不通（旧 WebKit 无 mDNS 解析器），按回退链走。';
+    }
+    h += '</span>';
+    // 书签落成裸 IP 时提示做 DHCP 保留，避免地址变化后书签失效
+    if (/^https?:\/\/\d+\./.test(boardUrl)) {
+      h += '<br><span class="muted">书签是 IP：建议在路由器给树莓派 MAC 做 DHCP 静态保留，' +
+           '让地址固定下来；服务端配置本身不含任何 IP。</span>';
+    }
+  } else {
+    h = '<span class="bad">全部候选都失败。</span><br>' +
+        '检查：Kindle 与树莓派是否连同一个 WiFi（关掉访客网络 / AP 隔离）、' +
+        '路由器是否允许无线客户端互访、PC 上直连 IP:8787 是否 200、' +
+        '浏览器是否被限制非标准端口。';
+  }
+  el('verdict').innerHTML = h;
+}
+
+/* ---------- 先从服务端拿候选清单（同源 XHR，老 WebKit 可用） ---------- */
+
+function loadCandidates(cb) {
+  var xhr;
+  try { xhr = new XMLHttpRequest(); } catch (e) { cb(DEFAULT_CANDIDATES); return; }
+  var done = false;
+  var timer = setTimeout(function () { if (!done) { done = true; xhr.abort(); cb(DEFAULT_CANDIDATES); } }, 4000);
+  try {
+    xhr.open('GET', '/api/discovery?t=' + Date.now(), true);
+    xhr.onreadystatechange = function () {
+      if (done || xhr.readyState !== 4) return;
+      done = true;
+      clearTimeout(timer);
+      if (xhr.status === 200) {
+        try {
+          var d = JSON.parse(xhr.responseText);
+          var list = [], i;
+          for (i = 0; i < d.candidates.length; i++) {
+            // 候选 URL 现在是看板根路径（http://host:port/），取 origin 后拼 /ping.gif
+            var origin = d.candidates[i].url.replace(/^(https?:\/\/[^\/]+).*$/, '$1');
+            list.push([d.candidates[i].label, origin + '/ping.gif']);
+          }
+          cb(list.length ? list : DEFAULT_CANDIDATES);
+          return;
+        } catch (e) { /* 落到默认 */ }
+      }
+      cb(DEFAULT_CANDIDATES);
+    };
+    xhr.send(null);
+  } catch (e) {
+    done = true;
+    clearTimeout(timer);
+    cb(DEFAULT_CANDIDATES);
+  }
+}
+
+function runAll() {
+  el('href').innerHTML = esc(window.location.href);
+  el('ua').innerHTML = esc(navigator.userAgent || '(未知)');
+  caps();
+  el('verdict').innerHTML = '检测中…';
+  results = [];
+  idx = 0;
+  loadCandidates(function (list) {
+    candidates = list;
+    showDisc();
+    next();
+  });
+}
+
+runAll();
+</script>
+</body>
+</html>

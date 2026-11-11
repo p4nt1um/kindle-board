@@ -1,0 +1,70 @@
+/* Kindle KT3 / 600x800 / 16 级灰阶 / 旧 WebKit。
+   刻意只用 CSS1 + 少量 CSS2：不用 Grid / Flex / calc() / 变量 / 阴影 / 动画。
+   颜色只用纯黑白灰，避免彩色抖动拖慢 e-ink 刷新。 */
+html, body { margin:0; padding:0; background:#fff; color:#000; }
+body { font-family: serif; font-size:13px; line-height:14px; }
+#board { width:600px; background:#fff; }
+#header { height:23px; border-bottom:2px solid #000; font-size:12px; line-height:23px; }
+#h-title { float:left; font-weight:bold; letter-spacing:2px; padding-left:4px; }
+#h-status { float:right; padding-right:4px; color:#333; font-size:11px; }
+#loading { padding:12px 4px; color:#666; }
+/* 板块高度由内容自然撑开（不再按 rows 写死）；列表空行隐藏后顺势向上收缩 */
+.block { border-bottom:1px solid #000; padding-bottom:3px; }
+.bt { height:17px; line-height:17px; font-size:11px; font-weight:bold; border-bottom:1px dotted #999; overflow:hidden; }
+/* 标题行可承载动态长文案（时钟的公历+农历），限宽防止撑破 17px 行高或压到右侧状态 */
+.bt-l { float:left; padding-left:4px; letter-spacing:1px; max-width:480px; white-space:nowrap; overflow:hidden; }
+.bt-s { float:right; padding-right:4px; font-weight:normal; font-size:10px; color:#666; }
+.bc { padding:2px 4px 2px 4px; }
+.row { height:16px; line-height:16px; white-space:nowrap; overflow:hidden; font-size:13px; }
+.row-s { height:14px; line-height:14px; white-space:nowrap; overflow:hidden; font-size:11px; color:#666; }
+.big { font-family: monospace; font-size:29px; line-height:32px; height:32px; letter-spacing:1px; }
+.zone { width:50%; vertical-align:top; }
+.zlabel { font-size:11px; color:#333; height:15px; line-height:15px; }
+.zdate { font-size:12px; color:#333; height:16px; line-height:16px; }
+.mono { font-family: monospace; }
+.dim { color:#666; }
+.warn { color:#000; font-weight:bold; }
+.strike { text-decoration:line-through; }
+table.fixed { width:100%; border-collapse:collapse; table-layout:fixed; }
+td { padding:0; vertical-align:top; }
+.cell-time { width:150px; font-family:monospace; font-size:12px; }
+.cell-tag { width:56px; text-align:right; font-size:11px; color:#333; }
+.p-name { width:78px; font-size:12px; }
+/* 双栏：日程 | AI 额度。旧 WebKit 无 Grid/Flex，用 table-layout:fixed 的两个 td；
+   两栏各自是完整板块（标题行 + 内容），但共用一条下边框，避免出现一高一低两条线。 */
+table.duo { width:100%; border-collapse:collapse; table-layout:fixed; border-bottom:1px solid #000; }
+table.duo td { vertical-align:top; padding:0; }
+table.duo td.duo-r { border-left:1px solid #999; }
+table.duo .block { border-bottom:0; padding-bottom:0; }
+table.duo .bt-l { max-width:190px; }
+table.duo .bc { padding:2px 3px 4px 3px; }
+
+/* 日程条目：加大行距、纯黑；空槽隐藏后板块自然收缩 */
+.a-item { padding-bottom:6px; margin-bottom:2px; border-bottom:1px dotted #999; }
+/* 额度行距加大（原 1px）；条件格式：金额低于阈值的 provider 整行加粗；
+   「下次重置」用小字号挂在该行下一行，与数值列左边界对齐。 */
+.p-item { padding-bottom:5px; margin-bottom:1px; }
+.p-item-low, .p-item-low td, .p-item-low .p-name, .p-item-low .p-value, .p-item-low span { font-weight:bold; }
+.p-sub { height:12px; line-height:12px; margin-top:1px; padding-left:78px;
+         font-size:10px; font-weight:normal; color:#333; white-space:nowrap; overflow:hidden; }
+.a-day { width:104px; font-family:monospace; font-size:13px; color:#000; }
+.a-time { font-family:monospace; font-size:13px; color:#000; }
+.a-title { height:19px; line-height:19px; font-size:14px; color:#000; white-space:nowrap; overflow:hidden; }
+.a-tag { width:52px; text-align:right; font-size:12px; color:#000; }
+/* 当天（含进行中 / 跨天全天）整条放大加粗，只看服务端下发的 today 标记 */
+.a-title-today { height:23px; line-height:23px; font-size:17px; font-weight:bold; }
+.a-item-today .a-day, .a-item-today .a-time { font-size:14px; font-weight:bold; }
+.a-item-today .a-tag { font-size:13px; font-weight:bold; }
+/* 右栏较窄：额度数值单行裁切，防止长错误文本撑破 table-layout:fixed */
+.p-value, .p-value span { white-space:nowrap; overflow:hidden; }
+.p-value span { display:block; }
+/* 天气：横向 N 天，每天 4 行纵排；td 不写死宽度，由 table-layout:fixed 自动均分 */
+table.w5 { width:100%; border-collapse:collapse; table-layout:fixed; }
+table.w5 td { border-left:1px solid #999999; padding:2px 4px; vertical-align:top; }
+table.w5 td.first { border-left:0; }
+.w5-line { height:17px; line-height:17px; white-space:nowrap; overflow:hidden; }
+.w5-day { font-size:12px; font-weight:bold; }
+.w5-text { font-size:12px; }
+.w5-temp { font-family:monospace; font-size:13px; }
+.w5-pop { font-size:11px; color:#333333; }
+#b-daily-img { width:150px; height:88px; border:1px solid #999; }

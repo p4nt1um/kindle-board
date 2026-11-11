@@ -1,0 +1,28 @@
+{
+  "name": "kindle-board",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Local aggregation server + ES5 dumb-terminal H5 dashboard for a jailbroken Kindle (Windows / Linux / Raspberry Pi; WiFi LAN / DHCP / mDNS discovery)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "preflight": "node server/preflight.js",
+    "sync-secrets": "node sync-secrets.js",
+    "selftest": "node server/selftest-agenda.js && node server/selftest-cloud.js && node server/selftest-quota.js && node server/selftest-dom.js && node server/selftest-secrets.js",
+    "selftest:agenda": "node server/selftest-agenda.js",
+    "selftest:cloud": "node server/selftest-cloud.js",
+    "selftest:quota": "node server/selftest-quota.js",
+    "selftest:dom": "node server/selftest-dom.js",
+    "selftest:secrets": "node server/selftest-secrets.js",
+    "diagnose": "node server/diagnose-caldav.js",
+    "diagnose:baidu": "node server/diagnose-baidu.js",
+    "check:secrets": "node server/check-secrets.js",
+    "check": "node -e \"['server/index.js','server/mdns.js','server/secrets.js','server/http-util.js','server/blocks.js','server/aggregator.js','server/fetchers/clock.js','server/fetchers/lunar.js','server/fetchers/weather.js','server/fetchers/agenda.js','server/fetchers/quota.js','server/fetchers/cloud-balance.js','server/fetchers/daily.js','server/selftest-agenda.js','server/selftest-cloud.js','server/selftest-quota.js','server/selftest-dom.js','server/selftest-secrets.js','server/check-secrets.js','server/diagnose-caldav.js','server/diagnose-baidu.js','server/preflight.js','sync-secrets.js','public/board.js'].forEach(function(f){require('child_process').execFileSync(process.execPath,['--check',f],{stdio:'inherit'})})\""
+  },
+  "dependencies": {
+    "multicast-dns": "^7.2.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
