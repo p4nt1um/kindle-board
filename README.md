@@ -203,3 +203,10 @@ kindle-board/
 ---
 
 面向公开读者的介绍就到这里。部署过程、真机排查记录与本机运维笔记不随仓库发布；维护自己的部署记录时可放在 `README.local.md` 或 `NOTES.md`（两者均已被忽略）。
+
+---
+
+## 许可
+
+[MIT License](LICENSE) · Copyright (c) 2026 p4nt1um
+
