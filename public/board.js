@@ -1,14 +1,18 @@
 /* Kindle Board 哑终端前端 —— 严格 ES5，面向 Kindle 5.16.2.1.1 旧 WebKit。
  *
  * 禁用：fetch / Promise / let / const / 箭头函数 / 模板串 / CSS Grid / calc() / addEventListener。
- * 只用：XMLHttpRequest + JSON + DOM 文本节点 diff + setInterval。
+ * 只用：XMLHttpRequest + JSON + DOM 文本节点 diff + setInterval + DOM0 onclick。
  *
  * 设计要点：
- *  1. 骨架只建一次，之后每次刷新只改文本节点（nodeValue），不重建 DOM、不整页 reload，
- *     这能把 e-ink 的重绘面积压到最小。
+ *  1. 骨架只建一次，之后每次刷新只改文本节点（nodeValue）与 className，
+ *     不重建 DOM。5 分钟轮询绝不整页 reload，把 e-ink 重绘面积压到最小。
+ *     只有两种主动重载：① 点按右下角图片看大图后 5 秒；
+ *     ② 服务端 server.reloadToken 变化（运维改代码后下发，Kindle 自动拿新版）。
  *  2. 双时钟不依赖设备本地时区/时间：服务端给 nowUtcMs + 每时区真实偏移，
  *     客户端按「收到数据后经过的分钟数」递增；到 DST 切换点强制重新拉数据。
- *  3. 请求失败时什么都不动，只在标题栏与各板块状态行标记离线/过期，
+ *  3. 天气两地数据一次性下发，点击时钟右侧天气热区纯本地切换，
+ *     不发新请求、不用 localStorage（本机仅当前会话有效）、不用 touch（不触发）。
+ *  4. 请求失败时什么都不动，只在标题栏与各板块状态行标记离线/过期，
  *     并保留上一次成功的内容。
  */
 
@@ -17,6 +21,24 @@
 
   var WEEK = ['日', '一', '二', '三', '四', '五', '六'];
   var SHANGHAI_OFFSET = 480;
+
+  /** 线条天气图标的全部笔画，骨架期一次性建好，靠父节点 className 显隐 */
+  var WICO_STROKES = [
+    ['wk-shape', 'wk-sun-circle'],
+    ['wk-line', 'wk-ray-t'], ['wk-line', 'wk-ray-b'],
+    ['wk-line', 'wk-ray-l'], ['wk-line', 'wk-ray-r'],
+    ['wk-shape', 'wk-cloud-body'], ['wk-shape', 'wk-cloud-puff'],
+    ['wk-shape', 'wk-cloud2'],
+    ['wk-line', 'wk-drop1'], ['wk-line', 'wk-drop2'], ['wk-line', 'wk-drop3'],
+    ['wk-line', 'wk-flake-h1'], ['wk-line', 'wk-flake-v1'],
+    ['wk-line', 'wk-flake-h2'], ['wk-line', 'wk-flake-v2'],
+    ['wk-line', 'wk-flake-h3'], ['wk-line', 'wk-flake-v3'],
+    ['wk-shape', 'wk-fog-cloud'],
+    ['wk-line', 'wk-fog1'], ['wk-line', 'wk-fog2'], ['wk-line', 'wk-fog3'],
+    ['wk-line', 'wk-bolt1'], ['wk-line', 'wk-bolt2'],
+    ['wk-line', 'wk-na']
+  ];
+
   var st = {
     built: false,
     layoutKey: '',
@@ -30,7 +52,11 @@
     weatherDays: 5,
     quotaRows: 6,
     statusEls: [],
-    lastImgUrl: ''
+    lastImgUrl: '',
+    weatherCity: '',       // 当前选中的天气地区 key（= clock.data.zones[].id）
+    weatherData: null,     // normalizeWeather() 后的 {defaultCity, cities, legacy}
+    reloadToken: null,     // 服务端下发；null = 首次尚未记录，变化即整页重载
+    reloadTimer: null      // 防止重复注册 5 秒刷新定时器
   };
 
   function byId(id) { return document.getElementById(id); }
@@ -117,6 +143,113 @@
     return mk(d, 'div', 'bc', null);
   }
 
+  /* ---------------- 天气：多地区数据、点击切换、线条图标 ---------------- */
+
+  /** 把服务端 DTO 规范化；兼容旧的单城市 DTO（只有 days） */
+  function normalizeWeather(data) {
+    if (!data) return { defaultCity: '', cities: [], legacy: false };
+    if (data.cities && data.cities.length) {
+      return {
+        defaultCity: data.defaultCity || (data.cities[0] && data.cities[0].key) || '',
+        cities: data.cities,
+        legacy: false
+      };
+    }
+    if (data.days) {
+      var key = (st.zones[0] && st.zones[0].id) || 'shanghai';
+      return {
+        defaultCity: key,
+        cities: [{ key: key, name: data.city || '', days: data.days, ok: true }],
+        legacy: true
+      };
+    }
+    return { defaultCity: '', cities: [], legacy: false };
+  }
+
+  function cityByKey(d, key) {
+    var i;
+    if (!d || !d.cities) return null;
+    for (i = 0; i < d.cities.length; i++) {
+      if (d.cities[i].key === key) return d.cities[i];
+    }
+    return null;
+  }
+
+  /** 骨架期一次性预建全部图标笔画；之后只切父节点 className，不重建 DOM */
+  function buildWico(parent) {
+    var i;
+    for (i = 0; i < WICO_STROKES.length; i++) {
+      mk(parent, 'div', WICO_STROKES[i][0] + ' ' + WICO_STROKES[i][1], null);
+    }
+  }
+
+  /** 闭包工厂：避免 var 循环索引陷阱；点击时按索引读当前 zones，zones 变化也能对上 */
+  function makeWxClick(idx) {
+    return function () {
+      if (st.zones[idx]) selectCity(st.zones[idx].id);
+    };
+  }
+
+  function selectCity(key) {
+    if (!key || !st.weatherData || !st.weatherData.cities.length) return;
+    if (!cityByKey(st.weatherData, key)) return;
+    st.weatherCity = key;
+    syncWeatherView();
+  }
+
+  /** 5 日预报列 + 天气板块标题；只改文本节点 */
+  function renderWeather() {
+    var d = st.weatherData || { cities: [] };
+    var c = cityByKey(d, st.weatherCity) || d.cities[0] || null;
+    var days = (c && c.days) || [];
+    var i, x, n = st.weatherDays || 5;
+    for (i = 0; i < n; i++) {
+      x = days[i];
+      setText(byId('b-weather-' + i + '-day'), x ? (x.label + ' ' + (x.dateShort || x.date)) : '');
+      setText(byId('b-weather-' + i + '-text'), x ? x.text : '');
+      setText(byId('b-weather-' + i + '-temp'),
+        (x && x.max !== null && x.max !== undefined) ? (x.max + '°/' + x.min + '°') : '');
+      setText(byId('b-weather-' + i + '-pop'),
+        (x && x.pop !== null && x.pop !== undefined) ? ('降水 ' + x.pop + '%') : '');
+    }
+    setText(byId('b-weather-title'), (c && c.name) ? ('天 气 · ' + c.name) : '天 气');
+  }
+
+  /** 同步视图：校验选中地区、刷新两个时钟的图标/温度/天气文字、切选中框、重画 5 日列 */
+  function syncWeatherView() {
+    var d = st.weatherData || { defaultCity: '', cities: [], legacy: false };
+    var i, z, c, hit, ico, day, hitCls, icoCls;
+
+    // 每次 poll 都保留用户选择：只有当前 key 在新数据里不存在时才回落默认
+    if (!cityByKey(d, st.weatherCity)) {
+      st.weatherCity = d.defaultCity || ((st.zones[0] && st.zones[0].id) || '');
+    }
+
+    for (i = 0; i < 2; i++) {
+      z = st.zones[i];
+      hit = byId('b-clock-' + i + '-wx');
+      ico = byId('b-clock-' + i + '-ico');
+      if (!hit) continue;
+      c = z ? cityByKey(d, z.id) : null;
+      hit.style.display = (d.legacy || !c) ? 'none' : '';
+      day = (c && c.days && c.days[0]) ? c.days[0] : null;
+
+      if (ico) {
+        icoCls = 'wico wico-' + (day ? (day.category || 'na') : 'na');
+        if (ico.className !== icoCls) ico.className = icoCls;
+      }
+      setText(byId('b-clock-' + i + '-temp'),
+        (!c || c.ok === false || !day || day.max === null || day.max === undefined) ?
+          '—' : (day.max + '°/' + day.min + '°'));
+      setText(byId('b-clock-' + i + '-text'),
+        day ? empty(day.text || '', 5) : ((c && c.ok === false) ? '无数据' : ''));
+
+      hitCls = (st.weatherCity && z && z.id === st.weatherCity) ? 'wx-hit wx-on' : 'wx-hit';
+      if (hit.className !== hitCls) hit.className = hitCls;
+    }
+    renderWeather();
+  }
+
   /* ---------------- 骨架构建：与服务端 registry 的 renderer 名一一对应 ---------------- */
 
   var BUILDERS = {
@@ -124,12 +257,31 @@
       var t = mk(b, 'table', 'fixed', null);
       var tbody = mk(t, 'tbody', null, null);
       var tr = mk(tbody, 'tr', null, null);
-      var i, td;
+      var i, td, inner, innerBody, innerTr, left, right, hit, ico;
+      var wxTable, wxBody, wxRow, wxIcoCell, wxTxtCell;
       for (i = 0; i < 2; i++) {
         td = mk(tr, 'td', 'zone', null);
-        mkText(td, 'div', 'zlabel', 'b-clock-' + i + '-label', '');
-        mkText(td, 'div', 'big', 'b-clock-' + i + '-time', '--:--');
-        mkText(td, 'div', 'zdate', 'b-clock-' + i + '-date', '');
+        inner = mk(td, 'table', 'zone-grid', null);
+        innerBody = mk(inner, 'tbody', null, null);
+        innerTr = mk(innerBody, 'tr', null, null);
+        left = mk(innerTr, 'td', 'zone-l', null);
+        right = mk(innerTr, 'td', 'zone-r', null);
+        mkText(left, 'div', 'zlabel', 'b-clock-' + i + '-label', '');
+        mkText(left, 'div', 'big', 'b-clock-' + i + '-time', '--:--');
+        mkText(left, 'div', 'zdate', 'b-clock-' + i + '-date', '');
+        hit = mk(right, 'div', 'wx-hit', 'b-clock-' + i + '-wx');
+        /* 天气热区内部再分两列：左=放大后的图标，右=温度 / 天气文字纵向两行。
+           b-* id 全部不变，渲染器仍只改文本节点与 className。 */
+        wxTable = mk(hit, 'table', 'wx-grid', null);
+        wxBody = mk(wxTable, 'tbody', null, null);
+        wxRow = mk(wxBody, 'tr', null, null);
+        wxIcoCell = mk(wxRow, 'td', 'wx-ico-cell', null);
+        wxTxtCell = mk(wxRow, 'td', 'wx-txt-cell', null);
+        ico = mk(wxIcoCell, 'div', 'wico wico-na', 'b-clock-' + i + '-ico');
+        buildWico(ico);
+        mkText(wxTxtCell, 'div', 'wx-temp', 'b-clock-' + i + '-temp', '');
+        mkText(wxTxtCell, 'div', 'wx-text', 'b-clock-' + i + '-text', '');
+        hit.onclick = makeWxClick(i);
       }
     },
     /* 横向 N 天 × 每天 4 行纵排；列数由服务端 weatherDays 下发，td 自动均分 */
@@ -183,15 +335,22 @@
       var left = mk(tr, 'td', '', null);
       var right = mk(tr, 'td', '', null);
       right.style.width = '156px';
-      mkText(left, 'div', 'row', 'b-daily-quote', '');
+      mkText(left, 'div', 'd-line', 'b-daily-quote', '');
       mkText(left, 'div', 'row-s', 'b-daily-quote-src', '');
-      mkText(left, 'div', 'row', 'b-daily-poem', '');
+      mkText(left, 'div', 'd-line', 'b-daily-poem', '');
       mkText(left, 'div', 'row-s', 'b-daily-poem-src', '');
       mkText(left, 'div', 'row-s', 'b-daily-caption', '');
       var img = mk(right, 'img', '', 'b-daily-img');
       img.alt = '';
       img.style.display = 'none';
       img.onerror = function () { img.style.display = 'none'; };
+      // 右下角图片 = 刷新点按区：先弹大图，5 秒后整页重载拿新代码。
+      // 缩略图不带边框（用户要求），点按仍弹大图；下方不放任何操作提示文字。
+      img.onclick = function () {
+        if (img.style.display === 'none') return;
+        showBigImage(img.src);
+        scheduleReload(5000);
+      };
     },
     generic: function (b) {
       var i, r;
@@ -229,7 +388,7 @@
     if (el) el.style.display = on ? '' : 'none';
   }
 
-  /** 提示行：没有真实提示时整行隐藏（连 14px 高度都不占），异常/空状态才显示 */
+  /** 提示行：没有真实提示时整行隐藏（连行高都不占），异常/空状态才显示 */
   function setHint(id, text) {
     var el = byId(id);
     if (!el) return;
@@ -249,18 +408,11 @@
         setText(byId('b-clock-' + i + '-label'), z.label + (z.isDst ? '  [夏令时]' : '  [标准时]'));
       }
       tickClock();
+      syncWeatherView();   // zones 就绪后刷新两侧天气热区（weatherData 可能还是上一轮缓存）
     },
     weather: function (blk) {
-      var d = blk && blk.data;
-      var days = (d && d.days) || [];
-      var i, x, n = st.weatherDays || 5;
-      for (i = 0; i < n; i++) {
-        x = days[i];
-        setText(byId('b-weather-' + i + '-day'), x ? (x.label + ' ' + (x.dateShort || x.date)) : '');
-        setText(byId('b-weather-' + i + '-text'), x ? x.text : '');
-        setText(byId('b-weather-' + i + '-temp'), x && x.max !== null ? (x.max + '°/' + x.min + '°') : '');
-        setText(byId('b-weather-' + i + '-pop'), x && x.pop !== null ? ('降水 ' + x.pop + '%') : '');
-      }
+      st.weatherData = normalizeWeather(blk && blk.data);
+      syncWeatherView();   // 用最新的两地数据再同步一次
     },
     agenda: function (blk) {
       var d = blk && blk.data;
@@ -341,6 +493,45 @@
     }
   };
 
+  /* ---------------- 主动刷新：右下角图片大图 + 服务端 reloadToken ----------------
+     静态资源带 Cache-Control: no-store，WAF 的 config.xml 也关了缓存，
+     整页 reload 一定会重新拉到新版 board.js / board.css。
+     只用 DOM0 onclick + setTimeout，严格 ES5，旧 WebKit 可用。 */
+
+  function doReload() {
+    try { window.location.reload(); }
+    catch (e) { window.location.href = window.location.href; }
+  }
+
+  /** delayMs=0 立即重载（服务端换 token）；>0 用于「先弹大图看 5 秒」 */
+  function scheduleReload(delayMs) {
+    // 服务端换 token 是硬指令，即使「看大图」的 5 秒定时器在跑也要立刻重载
+    if (!delayMs) { doReload(); return; }
+    if (st.reloadTimer !== null) return;
+    st.reloadTimer = setTimeout(function () { doReload(); }, delayMs);
+  }
+
+  /** 弹窗骨架只建一次，挂在 #board 下用 absolute 盖住整屏 */
+  function buildLightbox() {
+    var host = byId('board');
+    if (!host || byId('b-lightbox')) return;
+    var box = mk(host, 'div', 'lb', 'b-lightbox');
+    box.style.display = 'none';
+    mkText(box, 'div', 'lb-tip', 'b-lightbox-tip', '查看大图 · 5 秒后自动刷新页面');
+    var big = mk(box, 'img', 'lb-img', 'b-lightbox-img');
+    big.alt = '';
+    mkText(box, 'div', 'lb-hint', 'b-lightbox-hint', '点按任意处可立即刷新');
+    box.onclick = function () { doReload(); };
+  }
+
+  function showBigImage(src) {
+    var box = byId('b-lightbox');
+    var big = byId('b-lightbox-img');
+    if (!box || !big || !src) return;
+    big.src = src;
+    box.style.display = 'block';
+  }
+
   /* ---------------- 数据流 ---------------- */
 
   /** 只有「日程 + AI 额度」相邻时才并排；否则退回原来的线性流式排版 */
@@ -384,10 +575,20 @@
   }
 
   function applyBoard(b) {
-    var layout = (b.server && b.server.layout) || [];
+    var srv = b.server || {};
+    var layout = srv.layout || [];
     var key = [];
     var i;
-    st.statusMode = (b.server && b.server.statusMode) || 'auto';
+    var token = srv.reloadToken || '';
+    // 首次加载只记录令牌，绝不刷新；此后服务端换令牌就整页重载，自动拿新版 CSS/JS
+    if (st.reloadToken === null) {
+      st.reloadToken = token;
+    } else if (token && token !== st.reloadToken) {
+      st.reloadToken = token;
+      scheduleReload(0);
+      return;
+    }
+    st.statusMode = srv.statusMode || 'auto';
     st.weatherDays = (b.server && b.server.weatherDays) || 5;
     st.quotaRows = (b.server && b.server.quotaRows) || 6;
     for (i = 0; i < layout.length; i++) key.push(layout[i].id + ':' + layout[i].rows + ':' + layout[i].renderer);
@@ -410,6 +611,7 @@
       var fn = RENDERERS[meta.renderer] || RENDERERS.generic;
       fn(blk);
       // 板块可自带动态标题（时钟标题行显示公历 + 农历）；没有就保留注册表的静态标题
+      // 天气标题由 renderWeather() 写「天 气 · 地区」，weather DTO 不带 titleText
       if (blk && blk.data && blk.data.titleText) {
         setText(byId('b-' + meta.id + '-title'), blk.data.titleText);
       }
@@ -476,8 +678,9 @@
   }
 
   window.onload = function () {
+    buildLightbox();             // 弹窗骨架只建一次，默认隐藏
     poll();
     setInterval(tickClock, 1000);
-    setInterval(poll, 300000);   // 每 5 分钟局部刷新，绝不 location.reload()
+    setInterval(poll, 300000);   // 每 5 分钟局部刷新；只有 reloadToken 变化才整页重载
   };
 })();

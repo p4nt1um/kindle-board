@@ -15,10 +15,23 @@
  * 浏览器只需 XHR 拉这份 JSON，不整页 reload；服务端也绝不把上游 URL / key / 凭据写进来。
  */
 
+var fs = require('fs');
+var path = require('path');
 var cfg = require('../config.json');
 var blocks = require('./blocks');
 var secrets = require('./secrets');
 var http = require('./http-util');
+
+/* 刷新令牌：每次生成 DTO 都重读这个纯文本文件（不缓存）。改完前端代码只需改这一行，
+   无需重启服务、无需碰 Kindle，浏览器最多 5 分钟 poll 到变化就整页重载拿新版 CSS/JS。
+   文件不存在 / 内容为空 = 不启用自动刷新；值里不含任何凭据。 */
+var RELOAD_TOKEN_FILE = path.join(__dirname, '..', 'data', 'reload-token');
+function readReloadToken() {
+  try {
+    return String(fs.readFileSync(RELOAD_TOKEN_FILE, 'utf8'))
+      .replace(/[\r\n\t ]/g, '').slice(0, 64);
+  } catch (e) { return ''; }
+}
 
 var ALLOWED = ['ok', 'stale', 'updatedAt', 'lastAttemptAt', 'data', 'error'];
 var state = {};
@@ -133,7 +146,9 @@ function tick() {
       e.error = '已超过 ' + Math.round(ttl * staleRatio / 3600000) + ' 小时未成功更新';
     }
     if (e.inflight) return;
-    var wait = (e.stale && e.updatedAt > 0) ? Math.min(ttl, 10 * 60 * 1000) : ttl;
+    // 只要 stale 就 10 分钟重试，包含「从未成功过（updatedAt=0）」的情况。
+    // 旧写法要求 updatedAt>0，导致服务首次启动时若上游不通，会白等一个完整 TTL（3 小时）。
+    var wait = e.stale ? Math.min(ttl, 10 * 60 * 1000) : ttl;
     var base = e.lastAttemptAt || 0;
     if (now - base >= wait) refreshOne(b.id, true);
   });
@@ -220,6 +235,7 @@ function payload() {
       weatherDays: (cfg.blocks.weather && cfg.blocks.weather.forecastDays) || 5,
       quotaRows: quotaRows,
       lowBalanceThreshold: lowThreshold,
+      reloadToken: readReloadToken(),
       startedAt: startedAt,
       lastFullRefresh: lastFullRefresh,
       credentials: secrets.status()

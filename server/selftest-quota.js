@@ -76,10 +76,10 @@ check('条件格式：失败行即使文本里有金额也不加粗', function (
 });
 
 check('条件格式：阈值可配置', function () {
-  var a = p(['余额 ¥88.00']), b = p(['余额 ¥120.50']);
+  var a = p(['余额 ¥80.00']), b = p(['余额 ¥200.00']);
   I.markLow([a, b], 100);
-  eq(a.low, true, '¥88 < 100');
-  eq(b.low, false, '¥120.50 > 100');
+  eq(a.low, true, '¥80 < 100');
+  eq(b.low, false, '¥200 > 100');
   return 'board.lowBalanceThreshold 生效';
 });
 

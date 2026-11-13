@@ -17,6 +17,7 @@
     "title": "KINDLE BOARD",
     "refreshMs": 10800000,
     "browserPollMs": 300000,
+    "_comment_reloadToken": "自动刷新令牌放在 data/reload-token（纯文本一行），每次生成 /api/board.json 都会重读；改完前端代码只需改这一行，Kindle 5 分钟内自动整页重载，无需重启服务或碰设备。值为空 = 不启用。",
     "rowPx": 12,
     "rowBudget": 60,
     "staleAfterRatio": 1.5,
@@ -26,18 +27,22 @@
       { "id": "shanghai", "label": "上海", "timeZone": "Asia/Shanghai" },
       { "id": "newyork", "label": "美国东部", "timeZone": "America/New_York" }
     ],
+    "_comment_zones": "zones[].id 是稳定内部键，不代表地名；示例第二时区取 America/New_York，可按需替换成自己的城市。天气 cities[].key 必须与这里的 id 一致。",
     "layout": ["clock", "weather", "agenda", "quota", "daily"]
   },
   "blocks": {
     "weather": {
       "enabled": true,
       "provider": "open-meteo",
-      "endpoint": "https://api.open-meteo.com/v1/forecast",
-      "city": "上海",
-      "latitude": 31.2304,
-      "longitude": 121.4737,
-      "timezone": "Asia/Shanghai",
-      "forecastDays": 5
+      "endpoint": "https://historical-forecast-api.open-meteo.com/v1/forecast",
+      "fallbackEndpoint": "https://api.open-meteo.com/v1/forecast",
+      "defaultCity": "shanghai",
+      "forecastDays": 5,
+      "_comment": "cities[].key 必须等于 board.zones[].id；示例坐标仅为公开城市中心点，可按需替换。2026-11-13 起主域名 api.open-meteo.com（唯一 A 记录 51.81.167.44）在国内 TCP 443 连接超时，故把可达的 historical-forecast-api 设为首选 endpoint、原主域名留作 fallbackEndpoint；两者互为兜底，任一恢复即可用。",
+      "cities": [
+        { "key": "shanghai", "name": "上海", "latitude": 31.2304, "longitude": 121.4737, "timezone": "Asia/Shanghai" },
+        { "key": "newyork", "name": "纽约", "latitude": 40.7128, "longitude": -74.0060, "timezone": "America/New_York" }
+      ]
     },
     "agenda": {
       "enabled": true,

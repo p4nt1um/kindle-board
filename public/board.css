@@ -1,26 +1,34 @@
 /* Kindle KT3 / 600x800 / 16 级灰阶 / 旧 WebKit。
    刻意只用 CSS1 + 少量 CSS2：不用 Grid / Flex / calc() / 变量 / 阴影 / 动画。
-   颜色只用纯黑白灰，避免彩色抖动拖慢 e-ink 刷新。 */
+   颜色只用纯黑白灰，避免彩色抖动拖慢 e-ink 刷新。
+   本轮：整体温和放大字号与行距（利用全屏后底部留白），新增纯 CSS 线条天气图标，
+   AI 额度区行距再次加大。第二轮：日程 / 额度 / 每日正文再放大一档，
+   注释类小字（.row-s / .p-sub / .bt-s）字号一律保持不变；
+   右下角图片点按后弹大图，5 秒整页刷新。放大后仍控制在 800px 一屏内。
+   第三轮：时钟右侧天气图标放大到 54x58，温度 / 天气文字移到图标右侧纵向两行并放大；
+   5 日预报的温度与天气文字也各放大一档，降水等注释小字保持不变。
+   第四轮：去掉右下角缩略图的 2px 黑边框（点击弹大图的行为不变）。 */
 html, body { margin:0; padding:0; background:#fff; color:#000; }
-body { font-family: serif; font-size:13px; line-height:14px; }
-#board { width:600px; background:#fff; }
-#header { height:23px; border-bottom:2px solid #000; font-size:12px; line-height:23px; }
+body { font-family: serif; font-size:15px; line-height:17px; }
+/* 大图弹窗用 absolute 覆盖整屏，需要 #board 作定位参照 */
+#board { width:600px; background:#fff; position:relative; }
+#header { height:26px; border-bottom:2px solid #000; font-size:13px; line-height:26px; }
 #h-title { float:left; font-weight:bold; letter-spacing:2px; padding-left:4px; }
-#h-status { float:right; padding-right:4px; color:#333; font-size:11px; }
+#h-status { float:right; padding-right:4px; color:#333; font-size:12px; }
 #loading { padding:12px 4px; color:#666; }
 /* 板块高度由内容自然撑开（不再按 rows 写死）；列表空行隐藏后顺势向上收缩 */
-.block { border-bottom:1px solid #000; padding-bottom:3px; }
-.bt { height:17px; line-height:17px; font-size:11px; font-weight:bold; border-bottom:1px dotted #999; overflow:hidden; }
-/* 标题行可承载动态长文案（时钟的公历+农历），限宽防止撑破 17px 行高或压到右侧状态 */
-.bt-l { float:left; padding-left:4px; letter-spacing:1px; max-width:480px; white-space:nowrap; overflow:hidden; }
-.bt-s { float:right; padding-right:4px; font-weight:normal; font-size:10px; color:#666; }
-.bc { padding:2px 4px 2px 4px; }
-.row { height:16px; line-height:16px; white-space:nowrap; overflow:hidden; font-size:13px; }
-.row-s { height:14px; line-height:14px; white-space:nowrap; overflow:hidden; font-size:11px; color:#666; }
-.big { font-family: monospace; font-size:29px; line-height:32px; height:32px; letter-spacing:1px; }
+.block { border-bottom:1px solid #000; padding-bottom:5px; }
+.bt { height:19px; line-height:19px; font-size:13px; font-weight:bold; border-bottom:1px dotted #999; overflow:hidden; }
+/* 标题行可承载动态长文案（时钟的公历+农历、天气的当前地区），限宽防止压到右侧状态 */
+.bt-l { float:left; padding-left:4px; letter-spacing:1px; max-width:460px; white-space:nowrap; overflow:hidden; }
+.bt-s { float:right; padding-right:4px; font-weight:normal; font-size:12px; color:#666; }
+.bc { padding:3px 5px 3px 5px; }
+.row { height:19px; line-height:19px; white-space:nowrap; overflow:hidden; font-size:15px; }
+.row-s { height:16px; line-height:16px; white-space:nowrap; overflow:hidden; font-size:12px; color:#666; }
+.big { font-family: monospace; font-size:34px; line-height:38px; height:38px; letter-spacing:1px; }
 .zone { width:50%; vertical-align:top; }
-.zlabel { font-size:11px; color:#333; height:15px; line-height:15px; }
-.zdate { font-size:12px; color:#333; height:16px; line-height:16px; }
+.zlabel { font-size:13px; color:#333; height:17px; line-height:17px; }
+.zdate { font-size:13px; color:#333; height:18px; line-height:18px; }
 .mono { font-family: monospace; }
 .dim { color:#666; }
 .warn { color:#000; font-weight:bold; }
@@ -29,42 +37,147 @@ table.fixed { width:100%; border-collapse:collapse; table-layout:fixed; }
 td { padding:0; vertical-align:top; }
 .cell-time { width:150px; font-family:monospace; font-size:12px; }
 .cell-tag { width:56px; text-align:right; font-size:11px; color:#333; }
-.p-name { width:78px; font-size:12px; }
+.p-name { width:78px; font-size:15px; }
 /* 双栏：日程 | AI 额度。旧 WebKit 无 Grid/Flex，用 table-layout:fixed 的两个 td；
    两栏各自是完整板块（标题行 + 内容），但共用一条下边框，避免出现一高一低两条线。 */
 table.duo { width:100%; border-collapse:collapse; table-layout:fixed; border-bottom:1px solid #000; }
 table.duo td { vertical-align:top; padding:0; }
 table.duo td.duo-r { border-left:1px solid #999; }
 table.duo .block { border-bottom:0; padding-bottom:0; }
-table.duo .bt-l { max-width:190px; }
-table.duo .bc { padding:2px 3px 4px 3px; }
+table.duo .bt-l { max-width:175px; }
+table.duo .bc { padding:3px 4px 6px 4px; }
 
-/* 日程条目：加大行距、纯黑；空槽隐藏后板块自然收缩 */
-.a-item { padding-bottom:6px; margin-bottom:2px; border-bottom:1px dotted #999; }
-/* 额度行距加大（原 1px）；条件格式：金额低于阈值的 provider 整行加粗；
-   「下次重置」用小字号挂在该行下一行，与数值列左边界对齐。 */
-.p-item { padding-bottom:5px; margin-bottom:1px; }
+/* 日程条目：第二轮再放大一档，行距同步加大；空槽隐藏后板块自然收缩 */
+.a-item { padding-bottom:10px; margin-bottom:4px; border-bottom:1px dotted #999; }
+/* 额度行距（原 1px → 5px → 10px → 12px）；条件格式：金额低于阈值的 provider 整行加粗；
+   「下次重置」用小字号挂在该行下一行，与数值列左边界对齐（padding-left 与 .p-name 同宽）。
+   注意：.p-sub 是注释小字，字号 12px 本轮保持不变。 */
+.p-item { padding-bottom:12px; margin-bottom:3px; }
 .p-item-low, .p-item-low td, .p-item-low .p-name, .p-item-low .p-value, .p-item-low span { font-weight:bold; }
-.p-sub { height:12px; line-height:12px; margin-top:1px; padding-left:78px;
-         font-size:10px; font-weight:normal; color:#333; white-space:nowrap; overflow:hidden; }
-.a-day { width:104px; font-family:monospace; font-size:13px; color:#000; }
-.a-time { font-family:monospace; font-size:13px; color:#000; }
-.a-title { height:19px; line-height:19px; font-size:14px; color:#000; white-space:nowrap; overflow:hidden; }
-.a-tag { width:52px; text-align:right; font-size:12px; color:#000; }
+.p-sub { height:16px; line-height:16px; margin-top:1px; padding-left:78px;
+         font-size:12px; font-weight:normal; color:#333; white-space:nowrap; overflow:hidden; }
+.a-day { width:104px; font-family:monospace; font-size:15px; color:#000; }
+.a-time { font-family:monospace; font-size:15px; color:#000; }
+.a-title { height:24px; line-height:24px; font-size:17px; color:#000; white-space:nowrap; overflow:hidden; }
+.a-tag { width:52px; text-align:right; font-size:13px; color:#000; }
 /* 当天（含进行中 / 跨天全天）整条放大加粗，只看服务端下发的 today 标记 */
-.a-title-today { height:23px; line-height:23px; font-size:17px; font-weight:bold; }
-.a-item-today .a-day, .a-item-today .a-time { font-size:14px; font-weight:bold; }
-.a-item-today .a-tag { font-size:13px; font-weight:bold; }
+.a-title-today { height:28px; line-height:28px; font-size:20px; font-weight:bold; }
+.a-item-today .a-day, .a-item-today .a-time { font-size:16px; font-weight:bold; }
+.a-item-today .a-tag { font-size:14px; font-weight:bold; }
 /* 右栏较窄：额度数值单行裁切，防止长错误文本撑破 table-layout:fixed */
-.p-value, .p-value span { white-space:nowrap; overflow:hidden; }
+.p-value, .p-value span { white-space:nowrap; overflow:hidden; font-size:15px; }
 .p-value span { display:block; }
 /* 天气：横向 N 天，每天 4 行纵排；td 不写死宽度，由 table-layout:fixed 自动均分 */
 table.w5 { width:100%; border-collapse:collapse; table-layout:fixed; }
-table.w5 td { border-left:1px solid #999999; padding:2px 4px; vertical-align:top; }
+table.w5 td { border-left:1px solid #999999; padding:3px 4px; vertical-align:top; }
 table.w5 td.first { border-left:0; }
-.w5-line { height:17px; line-height:17px; white-space:nowrap; overflow:hidden; }
-.w5-day { font-size:12px; font-weight:bold; }
-.w5-text { font-size:12px; }
-.w5-temp { font-family:monospace; font-size:13px; }
-.w5-pop { font-size:11px; color:#333333; }
-#b-daily-img { width:150px; height:88px; border:1px solid #999; }
+/* 第三轮：5 日预报的最高/最低温与天气文字各放大一档，行高同步加 3px；
+   降水概率仍属注释小字，字号 12px 不变。5 列每列约 120px，16px 等宽温度不会溢出。 */
+.w5-line { height:22px; line-height:22px; white-space:nowrap; overflow:hidden; }
+.w5-day { font-size:14px; font-weight:bold; }
+.w5-text { font-size:15px; }
+.w5-temp { font-family:monospace; font-size:16px; }
+.w5-pop { font-size:12px; color:#333333; }
+/* 每日区正文：字号 17px 与行距 24px 都加大；来源/图注等注释小字仍走 .row-s（12px 不变） */
+.d-line { height:24px; line-height:24px; margin-bottom:2px; font-size:17px;
+          color:#000; white-space:nowrap; overflow:hidden; }
+/* 右下角图片 = 刷新点按区；第四轮按用户要求去掉黑边框（点击仍弹大图，5 秒刷新）。
+   注意：width/height 是 content-box，去框后图片本身仍是 150x88，只是不再多占 4px。 */
+#b-daily-img { width:150px; height:88px; }
+
+/* ---------------- 大图弹窗（点按图片 → 5 秒后整页刷新） ----------------
+   纯白覆盖层盖住整屏，absolute 相对 #board；不用 fixed / 半透明 / 动画。
+   整页 reload 后弹窗随页面销毁，无需单独关窗逻辑。 */
+.lb { position:absolute; left:0; top:0; width:600px; height:800px;
+      background:#fff; z-index:10; }
+.lb-tip { height:24px; line-height:24px; padding-left:6px; font-size:13px;
+          color:#000; border-bottom:1px solid #000; }
+.lb-img { display:block; width:560px; margin:18px 20px 0 20px; border:2px solid #000; }
+.lb-hint { margin:10px 20px 0 20px; font-size:12px; color:#333; }
+
+/* ---------------- 时钟右侧：当地当天天气 ----------------
+   每个 .zone 内部拆成两列：左=时间，右=可点击的天气热区。
+   热区内部再用 table-layout:fixed 拆成「图标 | 右侧两行文字」：图标放大到 54x58，
+   温度与天气文字纵向排在右边、整体垂直居中，不再挤在图标下方用小字。
+   时钟列 170→140px（34px 等宽 HH:MM 约 107px 仍放得下），腾给天气列 160px；
+   热区整块是点击目标；选中态只用下边框切颜色，高度恒定、不引起宽度跳动。 */
+table.zone-grid { width:100%; border-collapse:collapse; table-layout:fixed; }
+td.zone-l { width:140px; }
+td.zone-r { width:160px; }
+table.wx-grid { width:100%; border-collapse:collapse; table-layout:fixed; }
+td.wx-ico-cell { width:58px; }
+td.wx-txt-cell { vertical-align:middle; }
+.wx-hit { border-bottom:2px solid #fff; padding:2px 3px 3px 3px; }
+.wx-hit.wx-on { border-bottom:2px solid #000; font-weight:bold; }
+.wx-temp { height:24px; line-height:24px; font-family:monospace; font-size:17px;
+           white-space:nowrap; overflow:hidden; }
+.wx-text { height:20px; line-height:20px; font-size:16px; color:#333;
+           white-space:nowrap; overflow:hidden; }
+.wx-hit.wx-on .wx-text { color:#000; }
+
+/* ---------------- 纯 CSS 线条天气图标 ----------------
+   骨架一次性预建全部笔画（div），由父节点 .wico-<category> 决定哪些显示。
+   只用 3px 实线 / 3px 实心短线 / border-radius，不用 SVG、图片、字体、伪元素、
+   transform（旧 WebKit 不稳）。-webkit-border-radius 为老引擎兜底。
+   第三轮：容器 34x36 → 54x58，全部笔画坐标按约 1.6 倍重算（不用 zoom/scale，
+   避免旧 WebKit 布局抖动），线条 2px → 3px，整枚图标视觉放大约 60%。 */
+.wico { position:relative; width:54px; height:58px; }
+.wico div { position:absolute; display:none; border:0 solid #000; }
+.wico .wk-line { background:#000; }
+/* 圆角由各笔画类自己给（特异性更低的通用规则不再设 border-radius） */
+.wico .wk-shape { border:3px solid #000; background:#fff; }
+
+/* 笔画定位（容器 54x58；wk-shape 的宽高是内容尺寸，实际占位还要各加 6px 边框） */
+.wk-sun-circle { left:13px; top:14px; width:28px; height:28px;
+                 -webkit-border-radius:16px; border-radius:16px; }
+.wk-ray-t { left:26px; top:0px; width:3px; height:10px; }
+.wk-ray-b { left:26px; top:47px; width:3px; height:10px; }
+.wk-ray-l { left:0px; top:27px; width:10px; height:3px; }
+.wk-ray-r { left:44px; top:27px; width:10px; height:3px; }
+.wk-cloud-body { left:5px; top:29px; width:42px; height:16px;
+                 -webkit-border-radius:10px; border-radius:10px; }
+.wk-cloud-puff { left:14px; top:14px; width:22px; height:22px;
+                 -webkit-border-radius:14px; border-radius:14px; }
+.wk-cloud2 { left:14px; top:21px; width:34px; height:14px;
+             -webkit-border-radius:9px; border-radius:9px; }
+.wk-drop1 { left:11px; top:48px; width:3px; height:10px; }
+.wk-drop2 { left:26px; top:48px; width:3px; height:10px; }
+.wk-drop3 { left:40px; top:48px; width:3px; height:10px; }
+.wk-flake-h1, .wk-flake-h2, .wk-flake-h3 { width:10px; height:3px; top:51px; }
+.wk-flake-v1, .wk-flake-v2, .wk-flake-v3 { width:3px; height:10px; top:48px; }
+.wk-flake-h1 { left:8px; }  .wk-flake-v1 { left:11px; }
+.wk-flake-h2 { left:22px; } .wk-flake-v2 { left:26px; }
+.wk-flake-h3 { left:37px; } .wk-flake-v3 { left:40px; }
+.wk-fog1 { left:6px; top:16px; width:42px; height:3px; }
+.wk-fog2 { left:3px; top:29px; width:48px; height:3px; }
+.wk-fog3 { left:10px; top:42px; width:38px; height:3px; }
+.wk-fog-cloud { left:16px; top:5px; width:22px; height:10px;
+                -webkit-border-radius:5px; border-radius:5px; }
+.wk-bolt1 { left:27px; top:46px; width:3px; height:8px; }
+.wk-bolt2 { left:21px; top:53px; width:3px; height:5px; }
+.wk-na { left:10px; top:27px; width:35px; height:3px; }
+
+/* 每类显示哪些笔画（父 className 由 board.js 按服务端 category 切换） */
+.wico-sun .wk-sun-circle, .wico-sun .wk-ray-t, .wico-sun .wk-ray-b,
+.wico-sun .wk-ray-l, .wico-sun .wk-ray-r { display:block; }
+
+.wico-cloud .wk-cloud-body, .wico-cloud .wk-cloud-puff { display:block; }
+
+.wico-overcast .wk-cloud-body, .wico-overcast .wk-cloud-puff,
+.wico-overcast .wk-cloud2 { display:block; }
+
+.wico-rain .wk-cloud-body, .wico-rain .wk-cloud-puff,
+.wico-rain .wk-drop1, .wico-rain .wk-drop2, .wico-rain .wk-drop3 { display:block; }
+
+.wico-snow .wk-cloud-body, .wico-snow .wk-cloud-puff,
+.wico-snow .wk-flake-h1, .wico-snow .wk-flake-v1,
+.wico-snow .wk-flake-h2, .wico-snow .wk-flake-v2,
+.wico-snow .wk-flake-h3, .wico-snow .wk-flake-v3 { display:block; }
+
+.wico-fog .wk-fog-cloud, .wico-fog .wk-fog1, .wico-fog .wk-fog2,
+.wico-fog .wk-fog3 { display:block; }
+
+.wico-storm .wk-cloud-body, .wico-storm .wk-cloud-puff,
+.wico-storm .wk-bolt1, .wico-storm .wk-bolt2 { display:block; }
+
+.wico-na .wk-na { display:block; }
