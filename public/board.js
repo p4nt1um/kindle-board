@@ -51,6 +51,7 @@
     statusMode: 'auto',
     weatherDays: 5,
     quotaRows: 6,
+    dailyNarrow: false,   // 本轮骨架里 daily 是否在双栏右栏（窄栏），每次重建都重算
     statusEls: [],
     lastImgUrl: '',
     weatherCity: '',       // 当前选中的天气地区 key（= clock.data.zones[].id）
@@ -318,38 +319,47 @@
       h = textRow(b, 'b-agenda-hint', 'row-s');
       h.style.display = 'none';   // 只在有真实提示时显示
     },
+    /* 第六轮：额度整宽沉底，改成横向 N 个小格（默认 6），每格「名称 / 标签 / 数字」三行纵排。
+       td 一律不隐藏（隐藏会破坏 table-layout:fixed 的等分列），空 provider 由渲染器填 —。 */
     quota: function (b) {
-      var i, row, sub, n = st.quotaRows || 6;
+      var t = mk(b, 'table', 'q6', 'b-quota-grid');
+      var tbody = mk(t, 'tbody', null, null);
+      var tr = mk(tbody, 'tr', null, null);
+      var i, td, n = st.quotaRows || 6;
       for (i = 0; i < n; i++) {
-        row = mk(b, 'div', 'p-item', 'b-quota-' + i + '-row');
-        grid(row, [
-          { cls: 'p-name', id: 'b-quota-' + i + '-name' },
-          { cls: 'p-value', id: 'b-quota-' + i + '-value' }
-        ]);
-        // 每行的「下一行」小字（如 GLM 下次重置），默认隐藏，有内容才展开
-        sub = mkText(row, 'div', 'p-sub', 'b-quota-' + i + '-sub', '');
-        sub.style.display = 'none';
-        row.style.display = 'none';
+        td = mk(tr, 'td', 'q-cell', 'b-quota-' + i + '-row');
+        if (i === 0) td.style.borderLeft = '0';   // 首格不要分隔线，className 切换也不会丢
+        mkText(td, 'div', 'q-name', 'b-quota-' + i + '-name', '');
+        mkText(td, 'div', 'q-label', 'b-quota-' + i + '-label', '');
+        mkText(td, 'div', 'q-num', 'b-quota-' + i + '-num', '');
       }
       textRow(b, 'b-quota-hint', 'row-s').style.display = 'none';
     },
-    daily: function (b) {
-      var t = mk(b, 'table', 'fixed', null);
-      var tbody = mk(t, 'tbody', null, null);
-      var tr = mk(tbody, 'tr', null, null);
-      var left = mk(tr, 'td', '', null);
-      var right = mk(tr, 'td', '', null);
-      right.style.width = '156px';
-      mkText(left, 'div', 'd-line', 'b-daily-quote', '');
-      mkText(left, 'div', 'row-s', 'b-daily-quote-src', '');
-      mkText(left, 'div', 'd-line', 'b-daily-poem', '');
-      mkText(left, 'div', 'row-s', 'b-daily-poem-src', '');
-      mkText(left, 'div', 'row-s', 'b-daily-caption', '');
-      var img = mk(right, 'img', '', 'b-daily-img');
+    /* 第六轮：daily 进双栏右栏时改为「上文下图」，不建左右两列的 table.fixed；
+       两种形态共用同一批 b-daily-* id 与同一份图片点击逻辑，渲染器无需知道布局差异。 */
+    daily: function (b, narrow) {
+      var t, tbody, tr, left, right, host, img;
+      if (!narrow) {
+        t = mk(b, 'table', 'fixed', null);
+        tbody = mk(t, 'tbody', null, null);
+        tr = mk(tbody, 'tr', null, null);
+        left = mk(tr, 'td', '', null);
+        right = mk(tr, 'td', '', null);
+        right.style.width = '156px';
+        host = left;
+      } else {
+        host = b;   // 窄栏：文字直接挂在 .bc 下，图片随后挂在同一 .bc 下
+      }
+      mkText(host, 'div', 'd-line', 'b-daily-quote', '');
+      mkText(host, 'div', 'row-s', 'b-daily-quote-src', '');
+      mkText(host, 'div', 'd-line', 'b-daily-poem', '');
+      mkText(host, 'div', 'row-s', 'b-daily-poem-src', '');
+      mkText(host, 'div', 'row-s', 'b-daily-caption', '');
+      img = mk(narrow ? b : right, 'img', narrow ? 'd-img-narrow' : '', 'b-daily-img');
       img.alt = '';
       img.style.display = 'none';
       img.onerror = function () { img.style.display = 'none'; };
-      // 右下角图片 = 刷新点按区：先弹大图，5 秒后整页重载拿新代码。
+      // 缩略图 = 刷新点按区：先弹大图，5 秒后整页重载拿新代码。
       // 缩略图不带边框（用户要求），点按仍弹大图；下方不放任何操作提示文字。
       img.onclick = function () {
         if (img.style.display === 'none') return;
@@ -402,6 +412,33 @@
     el.style.display = v ? '' : 'none';
   }
 
+  /** 第六轮：横向小格用。把一行 DTO 文本拆成「标签 + 纯数字」，减少文字、突出数字。
+      优先级：¥ 金额 > 剩余百分比 > 「余/剩」后的数字 > 失败或空的 —。
+      只提取数字，原文本里的说明、错误串、凭据之类一律不进 DOM。 */
+  function splitQuota(p) {
+    var r = { name: '', label: '', num: '—' };
+    var s, m;
+    if (!p) return r;
+    r.name = empty(p.label || '', 5);
+    if (!p.ok) return r;
+    s = (p.lines || []).join(' · ');
+    m = /¥\s*(-?\d+(?:\.\d+)?)/.exec(s);
+    if (m) {
+      // 余额只保留整数（用户要求）：概览不需要小数，整数更醒目也不会贴满格宽
+      r.num = m[1].split('.')[0];
+      r.label = /可用/.test(s) ? '可用' : (/现金/.test(s) ? '现金' : '余额');
+    } else if ((m = /(\d+(?:\.\d+)?)%/.exec(s))) {
+      r.num = m[1] + '%';
+      r.label = '剩';
+    } else if ((m = /(?:余|剩)\s*(\d+(?:\.\d+)?(?:\s*\/\s*\d+(?:\.\d+)?)?)/.exec(s))) {
+      r.num = m[1];
+      r.label = '余';
+    }
+    // 兜底：极端长数字仍限制在 7 字符，避免旧 WebKit 的 td 内溢出裁切不可靠
+    r.num = empty(r.num, 7);
+    return r;
+  }
+
   var RENDERERS = {
     clock: function (blk) {
       if (!blk || !blk.data || !blk.data.zones) return;
@@ -445,37 +482,33 @@
     quota: function (blk) {
       var d = blk && blk.data;
       var list = (d && d.providers) || [];
-      var i, p, row, sub, subText, rowCls, n = st.quotaRows || 6;
+      var i, p, v, row, rowCls, n = st.quotaRows || 6;
       for (i = 0; i < n; i++) {
         p = list[i];
-        showRow('b-quota-' + i + '-row', !!p);
-        setText(byId('b-quota-' + i + '-name'), p ? p.label : '');
-        setText(byId('b-quota-' + i + '-value'), p ?
-          (p.ok ? empty((p.lines || []).join(' · '), 22) : empty('— ' + p.error, 22)) : '');
+        v = splitQuota(p);
+        setText(byId('b-quota-' + i + '-name'), v.name);
+        setText(byId('b-quota-' + i + '-label'), v.label);
+        setText(byId('b-quota-' + i + '-num'), v.num);
         // 条件格式：金额低于阈值由服务端判好下发，这里只切 className、不重建 DOM
         row = byId('b-quota-' + i + '-row');
-        rowCls = (p && p.low) ? 'p-item p-item-low' : 'p-item';
+        rowCls = (p && p.low) ? 'q-cell q-cell-low' : 'q-cell';
         if (row && row.className !== rowCls) row.className = rowCls;
-        // 「下次重置」小字紧跟在该 provider 余额行的下一行，不再统一放板块底部
-        sub = byId('b-quota-' + i + '-sub');
-        subText = (p && p.resetText) ? ('下次重置 ' + p.resetText) : '';
-        if (sub) {
-          setText(sub, subText);
-          sub.style.display = subText ? '' : 'none';
-        }
       }
-      setHint('b-quota-hint', d ? (d.note || '') : '');
+      // 减少文字：重置时间 / note 不再占一行，只有异常状态由标题栏提示
+      setHint('b-quota-hint', '');
     },
     daily: function (blk) {
       var d = blk && blk.data;
+      var q = st.dailyNarrow ? 18 : 30;   // 窄栏约 290px，收紧截断防止溢出
+      var s = st.dailyNarrow ? 22 : 40;
       if (!d) return;
-      setText(byId('b-daily-quote'), empty('「' + (d.quote ? d.quote.text : '') + '」', 30));
-      setText(byId('b-daily-quote-src'), empty('— ' + (d.quote ? d.quote.source : ''), 40));
-      setText(byId('b-daily-poem'), empty(d.poem ? d.poem.text : '', 30));
-      setText(byId('b-daily-poem-src'), empty('— ' + (d.poem ? d.poem.source : ''), 40));
+      setText(byId('b-daily-quote'), empty('「' + (d.quote ? d.quote.text : '') + '」', q));
+      setText(byId('b-daily-quote-src'), empty('— ' + (d.quote ? d.quote.source : ''), s));
+      setText(byId('b-daily-poem'), empty(d.poem ? d.poem.text : '', q));
+      setText(byId('b-daily-poem-src'), empty('— ' + (d.poem ? d.poem.source : ''), s));
       var img = byId('b-daily-img');
       var cap = d.image ? (d.image.caption ? '图：' + d.image.caption : ('图：' + (d.image.source || ''))) : '图：暂无';
-      setText(byId('b-daily-caption'), empty(cap, 40));
+      setText(byId('b-daily-caption'), empty(cap, s));
       if (d.image && d.image.url) {
         if (st.lastImgUrl !== d.image.url) {
           st.lastImgUrl = d.image.url;
@@ -539,24 +572,34 @@
 
   /* ---------------- 数据流 ---------------- */
 
-  /** 只有「日程 + AI 额度」相邻时才并排；否则退回原来的线性流式排版 */
+  /** 第六轮：日程可与「AI 额度」或「每日」相邻并排；保留旧配对方便只改 config 就回滚 */
   function isDuo(a, b) {
     if (!a || !b) return false;
     var pair = a.id + '|' + b.id;
-    return pair === 'agenda|quota' || pair === 'quota|agenda';
+    return pair === 'agenda|quota' || pair === 'quota|agenda' ||
+           pair === 'agenda|daily' || pair === 'daily|agenda';
   }
 
-  function mount(meta, parent) {
+  /** narrow 只有 daily 会用到：双栏右栏时改「上文下图」并收紧文字截断 */
+  function mount(meta, parent, narrow) {
     var body = shell(meta, parent);
     var builder = BUILDERS[meta.renderer] || BUILDERS.generic;
-    builder(body);
+    builder(body, narrow);
   }
 
   function buildSkeleton(layout) {
     var host = byId('blocks');
     while (host.firstChild) host.removeChild(host.firstChild);
     st.statusEls = [];
-    var i, meta, t, tbody, tr, left, right;
+    var i, j, meta, t, tbody, tr, left, right;
+    // 每次重建都重算：daily 是否落在双栏里，决定图片形态与文字截断长度
+    st.dailyNarrow = false;
+    for (j = 0; j < layout.length - 1; j++) {
+      if (isDuo(layout[j], layout[j + 1]) &&
+          (layout[j].id === 'daily' || layout[j + 1].id === 'daily')) {
+        st.dailyNarrow = true;
+      }
+    }
     for (i = 0; i < layout.length; i++) {
       meta = layout[i];
       if (isDuo(meta, layout[i + 1])) {
@@ -569,12 +612,12 @@
         right = mk(tr, 'td', 'duo-r', null);
         left.style.width = '50%';
         right.style.width = '50%';
-        mount(meta, left);
+        mount(meta, left, meta.id === 'daily');
         i++;
-        mount(layout[i], right);
+        mount(layout[i], right, layout[i].id === 'daily');
         continue;
       }
-      mount(meta, host);
+      mount(meta, host, false);
     }
     st.built = true;
   }

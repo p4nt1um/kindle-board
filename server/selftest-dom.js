@@ -6,8 +6,9 @@
  *
  *   node server/selftest-dom.js
  *
- * 覆盖：双栏 table、额度行数随 server.quotaRows 变化、当天日程 className、
- *       时钟动态标题、空槽隐藏、失败不重建 DOM、DTO 不含密钥、
+ * 覆盖：双栏 table（日程 | 每日 50/50）、额度整宽横向 6 格与三行拆字、
+ *       每日窄栏上文下图 / 旧 layout 回滚、额度行数随 server.quotaRows 变化、
+ *       当天日程 className、时钟动态标题、空槽隐藏、失败不重建 DOM、DTO 不含密钥、
  *       双地区天气热区 / 线条图标类别 / 点击切换 / 二次 poll 保持选择 /
  *       旧单城市 DTO 降级、严格 ES5 语法。
  */
@@ -142,8 +143,8 @@ function boardPayload() {
         { id: 'clock', title: '时 钟', rows: 9, renderer: 'clock' },
         { id: 'weather', title: '天 气', rows: 9, renderer: 'weather' },
         { id: 'agenda', title: '日 程', rows: 15, renderer: 'agenda' },
-        { id: 'quota', title: 'AI 额度', rows: 10, renderer: 'quota' },
-        { id: 'daily', title: '每 日', rows: 10, renderer: 'daily' }
+        { id: 'daily', title: '每 日', rows: 10, renderer: 'daily' },
+        { id: 'quota', title: 'AI 额度', rows: 10, renderer: 'quota' }
       ]
     },
     blocks: {
@@ -223,34 +224,130 @@ console.log('前端 DOM 实跑自检');
 var doc = run(boardPayload());
 var byId = function (id) { return doc.getElementById(id); };
 
-check('双栏容器 b-duo 是 table，且左右两列各有板块', function () {
+check('双栏容器 b-duo 是 table，左右两列是「日程 | 每日」且等宽 50/50', function () {
   var duo = byId('b-duo');
   truthy(duo, '缺少 b-duo');
   eq(duo.tagName, 'TABLE', '容器标签');
   truthy(hasClassChain(byId('b-agenda'), 'duo-l'), '日程不在左列');
-  truthy(hasClassChain(byId('b-quota'), 'duo-r'), '额度不在右列');
+  truthy(hasClassChain(byId('b-daily'), 'duo-r'), '每日不在右列');
   truthy(hasClassChain(byId('b-agenda'), 'duo'), '日程不在双栏 table 内');
+  truthy(!hasClassChain(byId('b-quota'), 'duo'), '额度不应再在双栏里');
   var duoRow = duo.childNodes[0].childNodes[0];
   eq(duoRow.childNodes[0].style.width, '50%', '日程列宽');
-  eq(duoRow.childNodes[1].style.width, '50%', '额度列宽');
-  return '50% / 50% 等宽并排';
+  eq(duoRow.childNodes[1].style.width, '50%', '每日列宽');
+  return 'agenda | daily 50/50 等宽并排';
 });
 
-check('非双栏板块仍按线性流式排在 #blocks 下', function () {
-  ['b-clock', 'b-weather', 'b-daily'].forEach(function (id) {
+check('非双栏板块仍按线性流式排在 #blocks 下，额度整宽沉底', function () {
+  ['b-clock', 'b-weather', 'b-quota'].forEach(function (id) {
     var el = byId(id);
     truthy(el, '缺少 ' + id);
     truthy(!hasClassChain(el, 'duo'), id + ' 不应在双栏里');
   });
-  return 'clock / weather / daily 保持整宽';
+  eq(byId('b-quota').parentNode.id, 'blocks', '额度未直接挂在 #blocks 下');
+  return 'clock / weather / quota 保持整宽';
 });
 
-check('额度行数由 server.quotaRows=6 决定，第 7 行不存在', function () {
-  truthy(byId('b-quota-5-row'), '缺少第 6 行');
-  truthy(!byId('b-quota-6-row'), '多建了第 7 行');
-  eq(text(byId('b-quota-3-value')), '余额 ¥200.00', '百度云余额文本');
-  eq(text(byId('b-quota-4-value')), '— 未配置 AK/SK', '腾讯云错误文本');
-  return '6 行 provider，含 3 家云';
+check('额度整宽后排成横向 6 格 table.q6，第 7 格不存在', function () {
+  var grid = byId('b-quota-grid');
+  truthy(grid, '缺少 b-quota-grid');
+  eq(grid.tagName, 'TABLE', '额度容器不是 table');
+  eq(grid.className, 'q6', '额度容器类名');
+  var row = grid.childNodes[0].childNodes[0];
+  eq(row.childNodes.length, 6, '横向格子数不是 6');
+  for (var i = 0; i < 6; i++) {
+    eq(row.childNodes[i].id, 'b-quota-' + i + '-row', '第 ' + (i + 1) + ' 格 id');
+    truthy(row.childNodes[i].className.indexOf('q-cell') === 0, '第 ' + (i + 1) + ' 格不是 q-cell');
+  }
+  eq(row.childNodes[0].style.borderLeft, '0', '首格仍画了分隔竖线');
+  truthy(byId('b-quota-5-row'), '缺少第 6 格');
+  truthy(!byId('b-quota-6-row'), '多建了第 7 格');
+  eq(byId('b-quota-3-name').parentNode.id, 'b-quota-3-row', '三行未落在同一格内');
+  return '6 个 td 在同一 tr 里，不再纵向堆叠';
+});
+
+check('每格「名称 / 标签 / 纯数字」三行纵排，减少文字并突出数字', function () {
+  eq(byId('b-quota-3-name').className, 'q-name', '名称样式');
+  eq(byId('b-quota-3-label').className, 'q-label', '标签样式');
+  eq(byId('b-quota-3-num').className, 'q-num', '数字样式');
+  var cell = byId('b-quota-3-row');
+  eq(cell.childNodes[0].id, 'b-quota-3-name', '第 1 行应是名称');
+  eq(cell.childNodes[1].id, 'b-quota-3-label', '第 2 行应是标签');
+  eq(cell.childNodes[2].id, 'b-quota-3-num', '第 3 行应是数字');
+  eq(text(byId('b-quota-3-name')), '百度云', '名称文本');
+  eq(text(byId('b-quota-3-label')), '余额', '标签文本');
+  eq(text(byId('b-quota-3-num')), '200', '数字应去掉 ¥、小数与「余额」');
+  eq(text(byId('b-quota-1-label')), '可用', 'Kimi 沿用原文「可用」');
+  eq(text(byId('b-quota-1-num')), '800', 'Kimi 数字');
+  eq(text(byId('b-quota-0-name')), 'Deep…', '英文长名称裁到 5 字符');
+  return '纯前端拆字，服务端 DTO 不变';
+});
+
+check('余额一律只保留整数（用户要求），真机上不再贴满格边', function () {
+  var p = boardPayload();
+  p.blocks.quota.data.providers[0].lines = ['余额 ¥1234.56'];
+  p.blocks.quota.data.providers[1].lines = ['可用 ¥987.65'];
+  p.blocks.quota.data.providers[2].lines = ['余额 ¥0.99'];
+  var d = run(p);
+  eq(text(d.getElementById('b-quota-0-num')), '1234', '带小数金额应截成整数');
+  eq(text(d.getElementById('b-quota-1-num')), '987', '另一家也应截成整数');
+  eq(text(d.getElementById('b-quota-2-num')), '0', '不足 1 的余额应显示 0');
+  truthy(text(d.getElementById('b-quota-0-num')).length <= 7, '数字超过 7 字符');
+  return '整数 + 20px 大数字 + 94px 限宽 + 3px 留白';
+});
+
+check('无 ¥ 金额的 provider 取剩余百分比，失败/空格子显示大号 —', function () {
+  eq(text(byId('b-quota-2-num')), '99%', 'GLM 应取第一个剩余百分比');
+  eq(text(byId('b-quota-2-label')), '剩', 'GLM 标签');
+  eq(text(byId('b-quota-4-num')), '—', '失败格子应显示 —');
+  eq(text(byId('b-quota-4-label')), '', '失败格子不应有标签文字');
+  var p = boardPayload();
+  p.blocks.quota.data.providers = [];
+  var d = run(p);
+  eq(text(d.getElementById('b-quota-5-num')), '—', '空 provider 的格子应填 —');
+  truthy(d.getElementById('b-quota-5-row').style.display !== 'none', '空格子不应隐藏 td');
+  return '6 格始终填满，不空档、不破坏等分列';
+});
+
+check('每日进窄栏后「上文下图」：图片挂在文字之后且按栏宽放大', function () {
+  var img = byId('b-daily-img');
+  truthy(hasClassChain(img, 'duo-r'), '每日图片不在双栏右列');
+  truthy(img.className.indexOf('d-img-narrow') !== -1, '窄栏图片缺少 d-img-narrow');
+  truthy(hasClassChain(img, 'bc'), '图片未直接挂在 .bc 下');
+  var bc = img.parentNode;
+  var posImg = -1, posQuote = -1, posCaption = -1, i, hasTable = false;
+  for (i = 0; i < bc.childNodes.length; i++) {
+    if (bc.childNodes[i].id === 'b-daily-img') posImg = i;
+    if (bc.childNodes[i].id === 'b-daily-quote') posQuote = i;
+    if (bc.childNodes[i].id === 'b-daily-caption') posCaption = i;
+    if (bc.childNodes[i].tagName === 'TABLE') hasTable = true;
+  }
+  truthy(posQuote >= 0 && posCaption >= 0 && posImg > posCaption, '图片必须排在全部文字之后');
+  truthy(!hasTable, '窄栏不应再建左右两列的 table.fixed');
+  return 'quote / src / poem / src / caption / img 顺序纵排';
+});
+
+check('窄栏收紧每日文字截断；改回旧 layout 可无缝回滚', function () {
+  var longQuote = '这是一个非常非常长的引语句子用来验证窄栏截断';
+  var p = boardPayload();
+  p.blocks.daily.data.quote.text = longQuote;
+  var d = run(p);
+  truthy(text(d.getElementById('b-daily-quote')).length <= 18, '窄栏引语未收紧截断');
+  var old = boardPayload();
+  old.server.layout = [
+    { id: 'clock', title: '时 钟', rows: 9, renderer: 'clock' },
+    { id: 'weather', title: '天 气', rows: 9, renderer: 'weather' },
+    { id: 'agenda', title: '日 程', rows: 15, renderer: 'agenda' },
+    { id: 'quota', title: 'AI 额度', rows: 10, renderer: 'quota' },
+    { id: 'daily', title: '每 日', rows: 10, renderer: 'daily' }
+  ];
+  old.blocks.daily.data.quote.text = longQuote;
+  var d2 = run(old);
+  truthy(text(d2.getElementById('b-daily-quote')).length <= 30, '整宽截断长度被误改');
+  truthy(d2.getElementById('b-daily-img').className.indexOf('d-img-narrow') === -1,
+    '回滚旧 layout 后图片不应还是窄栏形态');
+  truthy(hasClassChain(d2.getElementById('b-quota'), 'duo-r'), '旧 layout 双栏未恢复');
+  return 'isDuo 保留旧配对，只改 config 即可回滚';
 });
 
 check('当天日程标题与整行都换成放大样式，非当天保持普通样式', function () {
@@ -282,23 +379,19 @@ check('className 切换没有破坏文本节点 diff 结构', function () {
   return '同一元素上 className + 文本节点共存';
 });
 
-check('条件格式：金额低于 500 的行切成 p-item-low，其余保持 p-item', function () {
-  eq(byId('b-quota-0-row').className, 'p-item p-item-low', 'DeepSeek ¥100.00');
-  eq(byId('b-quota-1-row').className, 'p-item', 'Kimi ¥800.00');
-  eq(byId('b-quota-3-row').className, 'p-item p-item-low', '百度云 ¥200.00');
-  eq(byId('b-quota-4-row').className, 'p-item', '失败行不加粗');
+check('条件格式：金额低于 500 的格子切成 q-cell-low，其余保持 q-cell', function () {
+  eq(byId('b-quota-0-row').className, 'q-cell q-cell-low', 'DeepSeek ¥100.00');
+  eq(byId('b-quota-1-row').className, 'q-cell', 'Kimi ¥800.00');
+  eq(byId('b-quota-3-row').className, 'q-cell q-cell-low', '百度云 ¥200.00');
+  eq(byId('b-quota-4-row').className, 'q-cell', '失败格子不加粗');
   return '只切 className，不重建 DOM';
 });
 
-check('GLM 下次重置以小字挂在该行下一行，板块底部提示行仍隐藏', function () {
-  var sub = byId('b-quota-2-sub');
-  truthy(sub, '缺少 b-quota-2-sub');
-  eq(text(sub), '下次重置 11/09 07:00', '子行文本');
-  eq(sub.style.display, '', 'GLM 子行应展开');
-  eq(sub.className, 'p-sub', '小字样式');
-  eq(byId('b-quota-0-sub').style.display, 'none', '无重置信息的行不占位');
-  eq(byId('b-quota-hint').style.display, 'none', '底部 hint 保持隐藏');
-  return '小字号子行 + 空槽不占位';
+check('减少文字：不再渲染「下次重置」小字行与底部提示行', function () {
+  eq(byId('b-quota-2-sub'), null, '窄格内仍建了 p-sub 子行');
+  eq(text(byId('b-quota-2-num')).indexOf('下次重置'), -1, '数字行混入了重置文字');
+  eq(byId('b-quota-hint').style.display, 'none', '底部 hint 应保持隐藏');
+  return 'resetText / note 均不占版面';
 });
 
 check('CSS：日程 / 额度 / 每日正文加大，注释小字字号不变，弹窗样式齐备', function () {
@@ -341,9 +434,28 @@ check('CSS：日程 / 额度 / 每日正文加大，注释小字字号不变，�
   // 第四轮：右下角缩略图的黑边框已按用户要求移除，防止回滚
   var imgRule = (css.match(/#b-daily-img\s*\{[^}]*\}/) || [''])[0];
   truthy(imgRule && !/border\s*:/.test(imgRule), '右下角缩略图又出现边框');
+  // 第六轮：额度横向 6 格，每格名称 / 标签 / 纯数字三行，数字必须够大够醒目
+  truthy(/table\.q6\s*\{[^}]*table-layout:fixed/.test(css), '横向 6 格表格缺少 table-layout:fixed');
+  truthy(/td\.q-cell\s*\{[^}]*border-left:1px solid #999/.test(css), '格子分隔竖线缺失');
+  truthy(/\.q-num\s*\{[^}]*font-family:monospace/.test(css), '数字未用等宽字体');
+  truthy(/\.q-num\s*\{[^}]*font-size:20px/.test(css), '整数余额应放大到 20px 突出数字');
+  truthy(/\.q-num\s*\{[^}]*width:94px/.test(css), '数字未限宽，旧 WebKit 的 td 内 overflow 不可靠');
+  truthy(/td\.q-cell\s*\{[^}]*padding:2px 3px/.test(css), '格子左右留白不足');
+  truthy(/\.q-num\s*\{[^}]*font-weight:bold/.test(css), '数字未加粗');
+  truthy(/\.q-name\s*\{[^}]*font-size:12px/.test(css), '名称应是精简小字');
+  truthy(/\.q-label\s*\{[^}]*font-size:12px/.test(css), '标签应是精简小字');
+  truthy(/\.q-cell-low\s+\.q-num\s*\{[^}]*font-size:22px/.test(css), '低余额数字未再放大');
+  var lowRule = (css.match(/\.q-cell-low\s+\.q-num\s*\{[^}]*\}/) || [''])[0];
+  truthy(lowRule && /text-decoration:underline/.test(lowRule), '低余额未用数字下划线强调');
+  truthy(lowRule && !/border-bottom/.test(lowRule), '低余额又画了横跨整格的表格线');
+  // 第六轮：窄栏每日图片按栏宽放大，且同样不得出现黑边框
+  var narrowRule = (css.match(/#b-daily-img\.d-img-narrow\s*\{[^}]*\}/) || [''])[0];
+  truthy(narrowRule && /width:280px/.test(narrowRule), '窄栏图片未按栏宽放大到 280px');
+  truthy(narrowRule && /height:164px/.test(narrowRule), '窄栏图片高度未按比例放大');
+  truthy(narrowRule && !/border\s*:/.test(narrowRule), '窄栏缩略图又出现边框');
   truthy(!/display\s*:\s*(grid|flex)/.test(cssCode), '引入了 Grid/Flex');
   truthy(!/calc\(/.test(cssCode), '引入了 calc()');
-  return 'CSS1/2 兼容写法 + 正文放大 / 注释小字不变 + 大图弹窗';
+  return 'CSS1/2 兼容写法 + 正文放大 / 注释小字不变 + 6 格数字 / 大图弹窗';
 });
 
 check('DTO 注入的假密钥不会出现在渲染文本里', function () {
@@ -355,11 +467,13 @@ check('DTO 注入的假密钥不会出现在渲染文本里', function () {
     if (n.nodeType === 3) all.push(n.nodeValue);
     else (n.childNodes || []).forEach(walk);
   })(d3.root);
-  // 这里是验证 mock 数据本身能进 DOM，真正防线在服务端字段白名单；
-  // 记录为提示项：前端是哑终端，不会自己凭空生成凭据文本。
+  // 第六轮：额度小格只提取数字与简短标签，provider 原文（含错误串 / 追踪串）
+  // 一律不进 DOM，减少文字的同时也收窄了信息暴露面。
   truthy(all.length > 20, 'DOM 文本节点数量异常');
+  truthy(text(d3.getElementById('b-quota-3-num')) === '1', '注入行的金额数字未正确提取');
+  truthy(all.join('').indexOf('SECRET_LEAK_CHECK') === -1, '额度原文里的追踪串进了 DOM');
   truthy(!/bce-auth-v1|TC3-HMAC-SHA256|Signature=/.test(all.join('')), '出现签名串');
-  return '页面只含展示文本，无签名/凭据串';
+  return '额度只渲染数字与标签，原文 / 签名 / 凭据串均不进 DOM';
 });
 
 /* ---------------- 双地区天气：图标 / 温度 / 点击切换 ---------------- */

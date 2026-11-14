@@ -9,7 +9,10 @@
    5 日预报的温度与天气文字也各放大一档，降水等注释小字保持不变。
    第四轮：去掉右下角缩略图的 2px 黑边框（点击弹大图的行为不变）。
    第五轮：选中提示从天气热区底部移到时钟板块底部分隔线上（对应半栏加粗），
-   温度/天气文字随之上下居中并再放大一档；日程与 AI 额度双栏改等宽 50/50。 */
+   温度/天气文字随之上下居中并再放大一档；日程与 AI 额度双栏改等宽 50/50。
+   第六轮：额度与每日板块对调——双栏改为「日程 | 每日」（每日上文下图、图片按栏宽
+   放大），额度整宽沉底并改成横向 6 个小格，每格名称/标签/纯数字三行纵排，
+   减少文字、突出数字。 */
 html, body { margin:0; padding:0; background:#fff; color:#000; }
 body { font-family: serif; font-size:15px; line-height:17px; }
 /* 大图弹窗用 absolute 覆盖整屏，需要 #board 作定位参照 */
@@ -71,6 +74,25 @@ table.duo .bc { padding:3px 4px 6px 4px; }
 /* 两栏等宽：额度数值仍单行裁切，防止长错误文本撑破 table-layout:fixed */
 .p-value, .p-value span { white-space:nowrap; overflow:hidden; font-size:15px; }
 .p-value span { display:block; }
+
+/* ---------------- 第六轮：额度整宽沉底 → 横向 6 个小格 ----------------
+   每格三行纵排：名称 12px / 标签 12px 灰 / 纯数字 20px 等宽加粗。
+   列宽由 table-layout:fixed 均分（600/6≈100px），数字裁到 8 字符防撑破。
+   低余额由服务端 low 标记，纯灰阶下用字号 + 2px 下划线强调，不用反白/彩色。 */
+table.q6 { width:100%; border-collapse:collapse; table-layout:fixed; }
+/* 左右各留 3px + 94px 限宽：真机实测带小数的 7~8 位金额会贴满格边、相邻数字连成一片。
+   现在余额只保留整数（最长 5~6 位），20px 大数字可放心突出；不依赖旧 WebKit
+   在 td 内不可靠的 overflow:hidden。 */
+td.q-cell { border-left:1px solid #999; text-align:center; padding:2px 3px;
+            vertical-align:top; }
+.q-name { height:16px; line-height:16px; font-size:12px; color:#333;
+          white-space:nowrap; overflow:hidden; }
+.q-label { height:15px; line-height:15px; font-size:12px; color:#666;
+           white-space:nowrap; overflow:hidden; }
+.q-num { height:28px; line-height:28px; width:94px; font-family:monospace; font-size:20px;
+         font-weight:bold; white-space:nowrap; overflow:hidden; }
+/* 低余额只在数字文字下画下划线，不画横跨整格的线（会被误读成表格线） */
+.q-cell-low .q-num { font-size:22px; text-decoration:underline; }
 /* 天气：横向 N 天，每天 4 行纵排；td 不写死宽度，由 table-layout:fixed 自动均分 */
 table.w5 { width:100%; border-collapse:collapse; table-layout:fixed; }
 table.w5 td { border-left:1px solid #999999; padding:3px 4px; vertical-align:top; }
@@ -88,6 +110,9 @@ table.w5 td.first { border-left:0; }
 /* 右下角图片 = 刷新点按区；第四轮按用户要求去掉黑边框（点击仍弹大图，5 秒刷新）。
    注意：width/height 是 content-box，去框后图片本身仍是 150x88，只是不再多占 4px。 */
 #b-daily-img { width:150px; height:88px; }
+/* 第六轮：daily 进双栏右栏时「上文下图」，图片按栏宽放大到 280px（栏内约 291px），
+   高度按原 150:88 比例取 164px。规则内不得出现 border（用户要求缩略图无边框）。 */
+#b-daily-img.d-img-narrow { width:280px; height:164px; margin:2px 0 0 0; }
 
 /* ---------------- 大图弹窗（点按图片 → 5 秒后整页刷新） ----------------
    纯白覆盖层盖住整屏，absolute 相对 #board；不用 fixed / 半透明 / 动画。
