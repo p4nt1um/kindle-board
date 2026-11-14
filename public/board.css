@@ -12,7 +12,8 @@
    温度/天气文字随之上下居中并再放大一档；日程与 AI 额度双栏改等宽 50/50。
    第六轮：额度与每日板块对调——双栏改为「日程 | 每日」（每日上文下图、图片按栏宽
    放大），额度整宽沉底并改成横向 6 个小格，每格名称/标签/纯数字三行纵排，
-   减少文字、突出数字。 */
+   减少文字、突出数字。
+   第七轮：每日文字不再截断、改为自然换行，图片说明移到图片下方。 */
 html, body { margin:0; padding:0; background:#fff; color:#000; }
 body { font-family: serif; font-size:15px; line-height:17px; }
 /* 大图弹窗用 absolute 覆盖整屏，需要 #board 作定位参照 */
@@ -113,6 +114,11 @@ table.w5 td.first { border-left:0; }
 /* 第六轮：daily 进双栏右栏时「上文下图」，图片按栏宽放大到 280px（栏内约 291px），
    高度按原 150:88 比例取 164px。规则内不得出现 border（用户要求缩略图无边框）。 */
 #b-daily-img.d-img-narrow { width:280px; height:164px; margin:2px 0 0 0; }
+/* 第七轮：每日文字不截断、自然换行（用户要求）。原 .d-line / .row-s 的
+   固定 height + nowrap + overflow:hidden 会把长引文腰斩；这里只覆盖 #b-daily
+   内部，日程 / 额度 / 天气的注释小字行为保持不变。 */
+#b-daily .d-line { height:auto; line-height:24px; white-space:normal; overflow:visible; }
+#b-daily .row-s { height:auto; line-height:16px; white-space:normal; overflow:visible; }
 
 /* ---------------- 大图弹窗（点按图片 → 5 秒后整页刷新） ----------------
    纯白覆盖层盖住整屏，absolute 相对 #board；不用 fixed / 半透明 / 动画。

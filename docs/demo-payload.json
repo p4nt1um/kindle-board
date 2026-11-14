@@ -1,0 +1,149 @@
+{
+  "generatedAt": 1767225600000,
+  "nowUtcMs": 1767225600000,
+  "nextDstTransitionUtc": null,
+  "refreshMs": 300000,
+  "browserPollMs": 300000,
+  "server": {
+    "title": "KINDLE BOARD",
+    "statusMode": "auto",
+    "weatherDays": 5,
+    "quotaRows": 6,
+    "lowBalanceThreshold": 500,
+    "reloadToken": "demo",
+    "layout": [
+      { "id": "clock", "title": "时 钟", "rows": 9, "renderer": "clock" },
+      { "id": "weather", "title": "天 气", "rows": 9, "renderer": "weather" },
+      { "id": "agenda", "title": "日 程", "rows": 15, "renderer": "agenda" },
+      { "id": "daily", "title": "每 日", "rows": 10, "renderer": "daily" },
+      { "id": "quota", "title": "AI 额度", "rows": 10, "renderer": "quota" }
+    ]
+  },
+  "blocks": {
+    "clock": {
+      "ok": true,
+      "stale": false,
+      "updatedAt": 1767225600000,
+      "lastAttemptAt": 0,
+      "error": "",
+      "data": {
+        "nowUtcMs": 1767225600000,
+        "nextDstTransitionUtc": null,
+        "zones": [
+          { "id": "cityA", "label": "甲城", "offsetMinutes": 480, "isDst": false },
+          { "id": "cityB", "label": "乙城", "offsetMinutes": -300, "isDst": false }
+        ],
+        "titleText": "示例日期 星期四  农历示例月 示例年 [示例]"
+      }
+    },
+    "weather": {
+      "ok": true,
+      "stale": false,
+      "updatedAt": 1767225600000,
+      "lastAttemptAt": 0,
+      "error": "",
+      "data": {
+        "provider": "demo",
+        "defaultCity": "cityA",
+        "cities": [
+          {
+            "key": "cityA",
+            "name": "甲城",
+            "lat": 30.0,
+            "lon": 120.0,
+            "timezone": "UTC+08",
+            "ok": true,
+            "error": "",
+            "days": [
+              { "label": "今天", "dateShort": "01/01", "text": "晴", "code": 0, "category": "sun", "max": 18, "min": 9, "pop": 10 },
+              { "label": "明天", "dateShort": "01/02", "text": "多云", "code": 2, "category": "cloud", "max": 19, "min": 10, "pop": 16 },
+              { "label": "周六", "dateShort": "01/03", "text": "阴", "code": 3, "category": "overcast", "max": 17, "min": 8, "pop": 20 },
+              { "label": "周日", "dateShort": "01/04", "text": "小雨", "code": 61, "category": "rain", "max": 15, "min": 7, "pop": 78 },
+              { "label": "周一", "dateShort": "01/05", "text": "雾", "code": 45, "category": "fog", "max": 14, "min": 6, "pop": 30 }
+            ]
+          },
+          {
+            "key": "cityB",
+            "name": "乙城",
+            "lat": 40.0,
+            "lon": -70.0,
+            "timezone": "UTC-05",
+            "ok": true,
+            "error": "",
+            "days": [
+              { "label": "今天", "dateShort": "01/01", "text": "雪", "code": 71, "category": "snow", "max": 2, "min": -5, "pop": 60 },
+              { "label": "明天", "dateShort": "01/02", "text": "晴", "code": 0, "category": "sun", "max": 3, "min": -4, "pop": 12 },
+              { "label": "周六", "dateShort": "01/03", "text": "多云", "code": 2, "category": "cloud", "max": 4, "min": -3, "pop": 18 },
+              { "label": "周日", "dateShort": "01/04", "text": "雷雨", "code": 95, "category": "storm", "max": 1, "min": -6, "pop": 80 },
+              { "label": "周一", "dateShort": "01/05", "text": "雾", "code": 45, "category": "fog", "max": 0, "min": -7, "pop": 25 }
+            ]
+          }
+        ]
+      }
+    },
+    "agenda": {
+      "ok": true,
+      "stale": false,
+      "updatedAt": 1767225600000,
+      "lastAttemptAt": 0,
+      "error": "",
+      "data": {
+        "configured": true,
+        "provider": "demo",
+        "total": 4,
+        "hint": "",
+        "items": [
+          { "dayLabel": "01/01 周四", "timeLabel": "09:00→10:00", "tag": "示例", "title": "示例周会 @第一会议室", "today": true },
+          { "dayLabel": "01/02 周五", "timeLabel": "14:00→15:00", "tag": "", "title": "方案评审 @第二会议室", "today": false },
+          { "dayLabel": "01/05 周一", "timeLabel": "10:00→11:00", "tag": "", "title": "月度复盘", "today": false },
+          { "dayLabel": "01/06 周二", "timeLabel": "全天", "tag": "", "title": "设备巡检", "today": false }
+        ]
+      }
+    },
+    "daily": {
+      "ok": true,
+      "stale": false,
+      "updatedAt": 1767225600000,
+      "lastAttemptAt": 0,
+      "error": "",
+      "data": {
+        "dateKey": "2026-01-01",
+        "quote": {
+          "type": "demo",
+          "text": "把一本书读厚，再把一本书读薄，是理解一件事最朴素也最可靠的办法",
+          "source": "示例文集 · 第一卷",
+          "from": "demo"
+        },
+        "poem": {
+          "type": "demo",
+          "text": "山高月小，水落石出；清风徐来，水波不兴",
+          "source": "示例诗集 · 卷二",
+          "from": "demo"
+        },
+        "image": {
+          "url": "demo-daily.png",
+          "caption": "示例图片说明（纯虚构）",
+          "source": "示例图库"
+        }
+      }
+    },
+    "quota": {
+      "ok": true,
+      "stale": false,
+      "updatedAt": 1767225600000,
+      "lastAttemptAt": 0,
+      "error": "",
+      "data": {
+        "note": "",
+        "providers": [
+          { "id": "modelA", "label": "模型甲", "ok": true, "lines": ["余额 ¥1200.00"], "low": false },
+          { "id": "modelB", "label": "模型乙", "ok": true, "lines": ["可用 ¥860.00"], "low": false },
+          { "id": "modelC", "label": "模型丙", "ok": true, "lines": ["5h 剩99% · 1周 剩88%"], "low": false },
+          { "id": "cloudA", "label": "云甲", "ok": true, "lines": ["余额 ¥4300.00"], "low": false },
+          { "id": "cloudB", "label": "云乙", "ok": true, "lines": ["余额 ¥250.00"], "low": true },
+          { "id": "cloudC", "label": "云丙", "ok": false, "lines": [], "error": "未配置凭据", "low": false }
+        ]
+      }
+    }
+  }
+}

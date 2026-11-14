@@ -51,7 +51,6 @@
     statusMode: 'auto',
     weatherDays: 5,
     quotaRows: 6,
-    dailyNarrow: false,   // 本轮骨架里 daily 是否在双栏右栏（窄栏），每次重建都重算
     statusEls: [],
     lastImgUrl: '',
     weatherCity: '',       // 当前选中的天气地区 key（= clock.data.zones[].id）
@@ -354,7 +353,8 @@
       mkText(host, 'div', 'row-s', 'b-daily-quote-src', '');
       mkText(host, 'div', 'd-line', 'b-daily-poem', '');
       mkText(host, 'div', 'row-s', 'b-daily-poem-src', '');
-      mkText(host, 'div', 'row-s', 'b-daily-caption', '');
+      // 图注跟在图片下方（窄栏）；整宽版仍放在左列文字末尾
+      if (!narrow) mkText(host, 'div', 'row-s', 'b-daily-caption', '');
       img = mk(narrow ? b : right, 'img', narrow ? 'd-img-narrow' : '', 'b-daily-img');
       img.alt = '';
       img.style.display = 'none';
@@ -366,6 +366,7 @@
         showBigImage(img.src);
         scheduleReload(5000);
       };
+      if (narrow) mkText(b, 'div', 'row-s', 'b-daily-caption', '');
     },
     generic: function (b) {
       var i, r;
@@ -499,16 +500,20 @@
     },
     daily: function (blk) {
       var d = blk && blk.data;
-      var q = st.dailyNarrow ? 18 : 30;   // 窄栏约 290px，收紧截断防止溢出
-      var s = st.dailyNarrow ? 22 : 40;
       if (!d) return;
-      setText(byId('b-daily-quote'), empty('「' + (d.quote ? d.quote.text : '') + '」', q));
-      setText(byId('b-daily-quote-src'), empty('— ' + (d.quote ? d.quote.source : ''), s));
-      setText(byId('b-daily-poem'), empty(d.poem ? d.poem.text : '', q));
-      setText(byId('b-daily-poem-src'), empty('— ' + (d.poem ? d.poem.source : ''), s));
+      // 每日文字一律不截断（用户要求）：完整文本交给 CSS 自然换行，
+      // 窄栏与整宽版共用同一份 DTO 文本，不再按栏宽切字。
+      var quote = (d.quote && d.quote.text) || '';
+      var quoteSrc = (d.quote && d.quote.source) || '';
+      var poem = (d.poem && d.poem.text) || '';
+      var poemSrc = (d.poem && d.poem.source) || '';
+      setText(byId('b-daily-quote'), '「' + quote + '」');
+      setText(byId('b-daily-quote-src'), '— ' + quoteSrc);
+      setText(byId('b-daily-poem'), poem);
+      setText(byId('b-daily-poem-src'), '— ' + poemSrc);
       var img = byId('b-daily-img');
       var cap = d.image ? (d.image.caption ? '图：' + d.image.caption : ('图：' + (d.image.source || ''))) : '图：暂无';
-      setText(byId('b-daily-caption'), empty(cap, s));
+      setText(byId('b-daily-caption'), cap);
       if (d.image && d.image.url) {
         if (st.lastImgUrl !== d.image.url) {
           st.lastImgUrl = d.image.url;
@@ -591,15 +596,7 @@
     var host = byId('blocks');
     while (host.firstChild) host.removeChild(host.firstChild);
     st.statusEls = [];
-    var i, j, meta, t, tbody, tr, left, right;
-    // 每次重建都重算：daily 是否落在双栏里，决定图片形态与文字截断长度
-    st.dailyNarrow = false;
-    for (j = 0; j < layout.length - 1; j++) {
-      if (isDuo(layout[j], layout[j + 1]) &&
-          (layout[j].id === 'daily' || layout[j + 1].id === 'daily')) {
-        st.dailyNarrow = true;
-      }
-    }
+    var i, meta, t, tbody, tr, left, right;
     for (i = 0; i < layout.length; i++) {
       meta = layout[i];
       if (isDuo(meta, layout[i + 1])) {

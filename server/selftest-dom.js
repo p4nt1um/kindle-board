@@ -309,7 +309,7 @@ check('无 ¥ 金额的 provider 取剩余百分比，失败/空格子显示大�
   return '6 格始终填满，不空档、不破坏等分列';
 });
 
-check('每日进窄栏后「上文下图」：图片挂在文字之后且按栏宽放大', function () {
+check('每日进窄栏后「上文下图」，图片说明移到图片下方', function () {
   var img = byId('b-daily-img');
   truthy(hasClassChain(img, 'duo-r'), '每日图片不在双栏右列');
   truthy(img.className.indexOf('d-img-narrow') !== -1, '窄栏图片缺少 d-img-narrow');
@@ -322,17 +322,20 @@ check('每日进窄栏后「上文下图」：图片挂在文字之后且按栏�
     if (bc.childNodes[i].id === 'b-daily-caption') posCaption = i;
     if (bc.childNodes[i].tagName === 'TABLE') hasTable = true;
   }
-  truthy(posQuote >= 0 && posCaption >= 0 && posImg > posCaption, '图片必须排在全部文字之后');
+  truthy(posQuote >= 0 && posImg > posQuote, '图片必须排在引文等正文之后');
+  truthy(posCaption > posImg, '图片说明应排在图片之后（用户要求）');
   truthy(!hasTable, '窄栏不应再建左右两列的 table.fixed');
-  return 'quote / src / poem / src / caption / img 顺序纵排';
+  return 'quote / src / poem / src / img / caption 顺序纵排';
 });
 
-check('窄栏收紧每日文字截断；改回旧 layout 可无缝回滚', function () {
-  var longQuote = '这是一个非常非常长的引语句子用来验证窄栏截断';
+check('每日文字完整不截断（窄栏 / 整宽都保留全文），旧 layout 可回滚', function () {
+  var longQuote = '这是一个非常非常长的引语句子用来验证文字不再被腰斩并且可以自然换行';
+  var want = '「' + longQuote + '」';
   var p = boardPayload();
   p.blocks.daily.data.quote.text = longQuote;
   var d = run(p);
-  truthy(text(d.getElementById('b-daily-quote')).length <= 18, '窄栏引语未收紧截断');
+  eq(text(d.getElementById('b-daily-quote')), want, '窄栏引语被截断');
+  eq(text(d.getElementById('b-daily-caption')), '图：暂无', '图片说明文本被改动');
   var old = boardPayload();
   old.server.layout = [
     { id: 'clock', title: '时 钟', rows: 9, renderer: 'clock' },
@@ -343,11 +346,11 @@ check('窄栏收紧每日文字截断；改回旧 layout 可无缝回滚', funct
   ];
   old.blocks.daily.data.quote.text = longQuote;
   var d2 = run(old);
-  truthy(text(d2.getElementById('b-daily-quote')).length <= 30, '整宽截断长度被误改');
+  eq(text(d2.getElementById('b-daily-quote')), want, '整宽版引语被截断');
   truthy(d2.getElementById('b-daily-img').className.indexOf('d-img-narrow') === -1,
     '回滚旧 layout 后图片不应还是窄栏形态');
   truthy(hasClassChain(d2.getElementById('b-quota'), 'duo-r'), '旧 layout 双栏未恢复');
-  return 'isDuo 保留旧配对，只改 config 即可回滚';
+  return '不截断 + isDuo 旧配对仍可只改 config 回滚';
 });
 
 check('当天日程标题与整行都换成放大样式，非当天保持普通样式', function () {
@@ -453,6 +456,13 @@ check('CSS：日程 / 额度 / 每日正文加大，注释小字字号不变，�
   truthy(narrowRule && /width:280px/.test(narrowRule), '窄栏图片未按栏宽放大到 280px');
   truthy(narrowRule && /height:164px/.test(narrowRule), '窄栏图片高度未按比例放大');
   truthy(narrowRule && !/border\s*:/.test(narrowRule), '窄栏缩略图又出现边框');
+  // 第七轮：每日文字必须自然换行、不能再用固定 height + nowrap + hidden 腰斩长引文
+  var dLineRule = (css.match(/#b-daily\s+\.d-line\s*\{[^}]*\}/) || [''])[0];
+  var dRowRule = (css.match(/#b-daily\s+\.row-s\s*\{[^}]*\}/) || [''])[0];
+  truthy(dLineRule && /height:auto/.test(dLineRule), '每日正文仍写死高度，多行会被裁');
+  truthy(dLineRule && /white-space:normal/.test(dLineRule), '每日正文仍是 nowrap，无法换行');
+  truthy(dLineRule && /overflow:visible/.test(dLineRule), '每日正文仍被 overflow:hidden 截断');
+  truthy(dRowRule && /white-space:normal/.test(dRowRule), '出处 / 图片说明小字仍被截断');
   truthy(!/display\s*:\s*(grid|flex)/.test(cssCode), '引入了 Grid/Flex');
   truthy(!/calc\(/.test(cssCode), '引入了 calc()');
   return 'CSS1/2 兼容写法 + 正文放大 / 注释小字不变 + 6 格数字 / 大图弹窗';
