@@ -230,7 +230,10 @@ check('双栏容器 b-duo 是 table，且左右两列各有板块', function () 
   truthy(hasClassChain(byId('b-agenda'), 'duo-l'), '日程不在左列');
   truthy(hasClassChain(byId('b-quota'), 'duo-r'), '额度不在右列');
   truthy(hasClassChain(byId('b-agenda'), 'duo'), '日程不在双栏 table 内');
-  return '58% / 42% 左右并排';
+  var duoRow = duo.childNodes[0].childNodes[0];
+  eq(duoRow.childNodes[0].style.width, '50%', '日程列宽');
+  eq(duoRow.childNodes[1].style.width, '50%', '额度列宽');
+  return '50% / 50% 等宽并排';
 });
 
 check('非双栏板块仍按线性流式排在 #blocks 下', function () {
@@ -315,7 +318,9 @@ check('CSS：日程 / 额度 / 每日正文加大，注释小字字号不变，�
   truthy(/\.bt-s\s*\{[^}]*font-size:12px/.test(css), '注释小字 .bt-s 字号被改动');
   truthy(/\.p-item-low[^}]*font-weight:bold/.test(css), '低金额未加粗');
   truthy(/\.p-sub\s*\{[^}]*font-weight:normal/.test(css), '重置行继承了整行粗体');
-  truthy(/\.wx-hit\.wx-on\s*\{[^}]*border-bottom:2px solid #000/.test(css), '选中框规则缺失');
+  truthy(/td\.zone-on\s*\{[^}]*border-bottom:2px solid #000/.test(css), '选中半栏加粗规则缺失');
+  truthy(!/\.wx-hit\.wx-on\s*\{[^}]*border-bottom/.test(css), '热区底部仍画选中下划线');
+  truthy(/#b-clock\s*\{[^}]*padding-bottom:0/.test(css), '选中线未贴合板块分隔线');
   truthy(/\.wico-sun\s+\.wk-sun-circle/.test(css), '线条图标显隐规则缺失');
   // 第三轮：天气图标放大 + 温度/天气文字移到图标右侧，改字号时务必同步这段断言
   truthy(/\.wico\s*\{[^}]*width:54px/.test(css), '天气图标宽度未放大到 54px');
@@ -325,8 +330,8 @@ check('CSS：日程 / 额度 / 每日正文加大，注释小字字号不变，�
   truthy(/td\.zone-r\s*\{[^}]*width:160px/.test(css), '天气列未加宽到 160px');
   truthy(/td\.wx-ico-cell\s*\{[^}]*width:58px/.test(css), '图标列宽度缺失');
   truthy(/td\.wx-txt-cell\s*\{[^}]*vertical-align:middle/.test(css), '右侧两行文字未垂直居中');
-  truthy(/\.wx-temp\s*\{[^}]*font-size:17px/.test(css), '时钟温度字号未放大');
-  truthy(/\.wx-text\s*\{[^}]*font-size:16px/.test(css), '时钟天气文字字号未放大');
+  truthy(/\.wx-temp\s*\{[^}]*font-size:18px/.test(css), '时钟温度字号未放大到 18px');
+  truthy(/\.wx-text\s*\{[^}]*font-size:17px/.test(css), '时钟天气文字字号未放大到 17px');
   truthy(/\.w5-temp\s*\{[^}]*font-size:16px/.test(css), '5 日预报温度字号未放大');
   truthy(/\.w5-text\s*\{[^}]*font-size:15px/.test(css), '5 日预报天气文字字号未放大');
   truthy(/\.w5-pop\s*\{[^}]*font-size:12px/.test(css), '降水概率等注释小字被改动');
@@ -397,6 +402,8 @@ check('默认选中 defaultCity=shanghai：标题、5 日列、选中框与图�
   eq(text(byId('b-weather-0-temp')), '18°/9°', '第 1 天温度');
   eq(byId('b-clock-0-wx').className, 'wx-hit wx-on', '上海热区未选中');
   eq(byId('b-clock-1-wx').className, 'wx-hit', '纽约 热区不应选中');
+  eq(byId('b-clock-0-zone').className, 'zone zone-on', '上海半栏未加粗');
+  eq(byId('b-clock-1-zone').className, 'zone', '纽约 半栏不应加粗');
   eq(byId('b-clock-0-ico').className, 'wico wico-sun', '上海图标类别');
   eq(byId('b-clock-1-ico').className, 'wico wico-snow', '纽约 图标类别');
   eq(text(byId('b-clock-0-temp')), '18°/9°', '上海时钟温度');
@@ -411,6 +418,8 @@ check('点击第二个时钟热区后，5 日预报与标题切换到 纽约', f
   eq(text(byId('b-weather-0-temp')), '2°/-5°', '第 1 天温度未切换');
   eq(byId('b-clock-0-wx').className, 'wx-hit', '上海热区应取消选中');
   eq(byId('b-clock-1-wx').className, 'wx-hit wx-on', '纽约 热区应选中');
+  eq(byId('b-clock-1-zone').className, 'zone zone-on', '纽约 半栏未加粗');
+  eq(byId('b-clock-0-zone').className, 'zone', '上海半栏应取消加粗');
   return '纯本地切换，无新请求、骨架不重建';
 });
 

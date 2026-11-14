@@ -218,7 +218,7 @@
   /** 同步视图：校验选中地区、刷新两个时钟的图标/温度/天气文字、切选中框、重画 5 日列 */
   function syncWeatherView() {
     var d = st.weatherData || { defaultCity: '', cities: [], legacy: false };
-    var i, z, c, hit, ico, day, hitCls, icoCls;
+    var i, z, c, hit, ico, day, hitCls, icoCls, zoneEl, zoneCls;
 
     // 每次 poll 都保留用户选择：只有当前 key 在新数据里不存在时才回落默认
     if (!cityByKey(d, st.weatherCity)) {
@@ -246,6 +246,11 @@
 
       hitCls = (st.weatherCity && z && z.id === st.weatherCity) ? 'wx-hit wx-on' : 'wx-hit';
       if (hit.className !== hitCls) hit.className = hitCls;
+      /* 选中提示不再画在热区底部，改为把对应半栏的下边框加粗，
+         紧贴在时钟板块底部的分隔线上。 */
+      zoneEl = byId('b-clock-' + i + '-zone');
+      zoneCls = (hitCls === 'wx-hit wx-on') ? 'zone zone-on' : 'zone';
+      if (zoneEl && zoneEl.className !== zoneCls) zoneEl.className = zoneCls;
     }
     renderWeather();
   }
@@ -260,7 +265,7 @@
       var i, td, inner, innerBody, innerTr, left, right, hit, ico;
       var wxTable, wxBody, wxRow, wxIcoCell, wxTxtCell;
       for (i = 0; i < 2; i++) {
-        td = mk(tr, 'td', 'zone', null);
+        td = mk(tr, 'td', 'zone', 'b-clock-' + i + '-zone');
         inner = mk(td, 'table', 'zone-grid', null);
         innerBody = mk(inner, 'tbody', null, null);
         innerTr = mk(innerBody, 'tr', null, null);
@@ -562,8 +567,8 @@
         tr = mk(tbody, 'tr', null, null);
         left = mk(tr, 'td', 'duo-l', null);
         right = mk(tr, 'td', 'duo-r', null);
-        left.style.width = '58%';
-        right.style.width = '42%';
+        left.style.width = '50%';
+        right.style.width = '50%';
         mount(meta, left);
         i++;
         mount(layout[i], right);

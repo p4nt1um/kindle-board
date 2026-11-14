@@ -7,7 +7,9 @@
    右下角图片点按后弹大图，5 秒整页刷新。放大后仍控制在 800px 一屏内。
    第三轮：时钟右侧天气图标放大到 54x58，温度 / 天气文字移到图标右侧纵向两行并放大；
    5 日预报的温度与天气文字也各放大一档，降水等注释小字保持不变。
-   第四轮：去掉右下角缩略图的 2px 黑边框（点击弹大图的行为不变）。 */
+   第四轮：去掉右下角缩略图的 2px 黑边框（点击弹大图的行为不变）。
+   第五轮：选中提示从天气热区底部移到时钟板块底部分隔线上（对应半栏加粗），
+   温度/天气文字随之上下居中并再放大一档；日程与 AI 额度双栏改等宽 50/50。 */
 html, body { margin:0; padding:0; background:#fff; color:#000; }
 body { font-family: serif; font-size:15px; line-height:17px; }
 /* 大图弹窗用 absolute 覆盖整屏，需要 #board 作定位参照 */
@@ -26,7 +28,9 @@ body { font-family: serif; font-size:15px; line-height:17px; }
 .row { height:19px; line-height:19px; white-space:nowrap; overflow:hidden; font-size:15px; }
 .row-s { height:16px; line-height:16px; white-space:nowrap; overflow:hidden; font-size:12px; color:#666; }
 .big { font-family: monospace; font-size:34px; line-height:38px; height:38px; letter-spacing:1px; }
-.zone { width:50%; vertical-align:top; }
+.zone { width:50%; vertical-align:top; border-bottom:2px solid #fff; }
+/* 选中半栏：2px 黑线紧贴 #b-clock 的 1px 底框，视觉上就是分隔线加粗 */
+td.zone-on { border-bottom:2px solid #000; }
 .zlabel { font-size:13px; color:#333; height:17px; line-height:17px; }
 .zdate { font-size:13px; color:#333; height:18px; line-height:18px; }
 .mono { font-family: monospace; }
@@ -64,7 +68,7 @@ table.duo .bc { padding:3px 4px 6px 4px; }
 .a-title-today { height:28px; line-height:28px; font-size:20px; font-weight:bold; }
 .a-item-today .a-day, .a-item-today .a-time { font-size:16px; font-weight:bold; }
 .a-item-today .a-tag { font-size:14px; font-weight:bold; }
-/* 右栏较窄：额度数值单行裁切，防止长错误文本撑破 table-layout:fixed */
+/* 两栏等宽：额度数值仍单行裁切，防止长错误文本撑破 table-layout:fixed */
 .p-value, .p-value span { white-space:nowrap; overflow:hidden; font-size:15px; }
 .p-value span { display:block; }
 /* 天气：横向 N 天，每天 4 行纵排；td 不写死宽度，由 table-layout:fixed 自动均分 */
@@ -97,21 +101,25 @@ table.w5 td.first { border-left:0; }
 
 /* ---------------- 时钟右侧：当地当天天气 ----------------
    每个 .zone 内部拆成两列：左=时间，右=可点击的天气热区。
-   热区内部再用 table-layout:fixed 拆成「图标 | 右侧两行文字」：图标放大到 54x58，
-   温度与天气文字纵向排在右边、整体垂直居中，不再挤在图标下方用小字。
-   时钟列 170→140px（34px 等宽 HH:MM 约 107px 仍放得下），腾给天气列 160px；
-   热区整块是点击目标；选中态只用下边框切颜色，高度恒定、不引起宽度跳动。 */
+   热区内部再用 table-layout:fixed 拆成「图标 | 右侧两行文字」：图标 54x58，
+   温度与天气文字纵向排在右边、整体垂直居中。
+   时钟列 140px / 天气列 160px；热区整块是点击目标。
+   第五轮：选中提示不再画在热区底部，改由 td.zone-on 的 2px 下边框贴在板块分隔线上；
+   热区省下的空间用于把温度和天气文字再放大一档并上下居中。
+   让 zone 的下边框直接坐在板块底部分隔线上，不留 padding 空隙。 */
+#b-clock { padding-bottom:0; }
+#b-clock .bc { padding-bottom:0; }
 table.zone-grid { width:100%; border-collapse:collapse; table-layout:fixed; }
 td.zone-l { width:140px; }
 td.zone-r { width:160px; }
 table.wx-grid { width:100%; border-collapse:collapse; table-layout:fixed; }
 td.wx-ico-cell { width:58px; }
 td.wx-txt-cell { vertical-align:middle; }
-.wx-hit { border-bottom:2px solid #fff; padding:2px 3px 3px 3px; }
-.wx-hit.wx-on { border-bottom:2px solid #000; font-weight:bold; }
-.wx-temp { height:24px; line-height:24px; font-family:monospace; font-size:17px;
+.wx-hit { padding:2px 3px 2px 3px; }
+.wx-hit.wx-on { font-weight:bold; }
+.wx-temp { height:26px; line-height:26px; font-family:monospace; font-size:18px;
            white-space:nowrap; overflow:hidden; }
-.wx-text { height:20px; line-height:20px; font-size:16px; color:#333;
+.wx-text { height:22px; line-height:22px; font-size:17px; color:#333;
            white-space:nowrap; overflow:hidden; }
 .wx-hit.wx-on .wx-text { color:#000; }
 
