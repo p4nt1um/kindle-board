@@ -122,8 +122,9 @@ function refreshAll(quiet) {
 function checkCredentials() {
   var sig = secrets.signature();
   if (lastCredSig && sig !== lastCredSig) {
-    console.log('[board] 凭据状态变化 → 立即重取 agenda / quota');
-    ['agenda', 'quota'].forEach(function (id) { if (state[id]) refreshOne(id, false); });
+    console.log('[board] 凭据状态变化 → 立即重取 agenda / quota / weather');
+    // weather 也依赖凭据（和风 Host / Key），轮换后同样要立即重取，别干等下次 TTL
+    ['agenda', 'quota', 'weather'].forEach(function (id) { if (state[id]) refreshOne(id, false); });
   }
   lastCredSig = sig;
 }

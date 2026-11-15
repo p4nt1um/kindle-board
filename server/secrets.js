@@ -24,7 +24,10 @@ var ENV_MAP = {
   tencentSecretId: ['TENCENTCLOUD_SECRET_ID', 'TENCENT_SECRET_ID'],
   tencentSecretKey: ['TENCENTCLOUD_SECRET_KEY', 'TENCENT_SECRET_KEY'],
   aliyunAk: ['ALIYUN_ACCESS_KEY_ID', 'ALICLOUD_ACCESS_KEY_ID'],
-  aliyunSk: ['ALIYUN_ACCESS_KEY_SECRET', 'ALICLOUD_ACCESS_KEY_SECRET']
+  aliyunSk: ['ALIYUN_ACCESS_KEY_SECRET', 'ALICLOUD_ACCESS_KEY_SECRET'],
+  // 和风天气新版 v1：专属 API Host 与 Key；只经请求头 X-QW-Api-Key 送出，不拼进 URL
+  qweatherHost: ['QWEATHER_API_HOST', 'QW_API_HOST'],
+  qweatherKey: ['QWEATHER_API_KEY', 'QW_API_KEY']
 };
 
 var fileSecrets = {};
@@ -151,6 +154,7 @@ function status() {
     baiduCloud: has(['baiduAk', 'baiduSk']),
     tencentCloud: has(['tencentSecretId', 'tencentSecretKey']),
     aliyunCloud: has(['aliyunAk', 'aliyunSk']),
+    qweather: has(['qweatherHost', 'qweatherKey']),
     fileNote: fileNote
   };
 }
@@ -161,14 +165,16 @@ function redact(s) {
   return String(s)
     .replace(/([?&](?:api[_-]?key|token|key|password|pwd|secret|access_token)=)[^&\s]+/gi, '$1***')
     .replace(/(Bearer\s+)[A-Za-z0-9._\-]+/gi, '$1***')
-    .replace(/(Authorization:\s*Basic\s+)[A-Za-z0-9+/=]+/gi, '$1***');
+    .replace(/(Authorization:\s*Basic\s+)[A-Za-z0-9+/=]+/gi, '$1***')
+    .replace(/(X-QW-Api-Key\s*[:=]\s*)[^\s,'"}\]]+/gi, '$1***');
 }
 
 /** 凭据「有无」签名（绝不含值），供聚合器检测变化后自动重取依赖板块 */
 function signature() {
   loadFile();
   return ['caldavUser', 'caldavPass', 'caldavUrl', 'deepseekKey', 'kimiKey', 'glmKey',
-    'baiduAk', 'baiduSk', 'tencentSecretId', 'tencentSecretKey', 'aliyunAk', 'aliyunSk']
+    'baiduAk', 'baiduSk', 'tencentSecretId', 'tencentSecretKey', 'aliyunAk', 'aliyunSk',
+    'qweatherHost', 'qweatherKey']
     .map(function (k) { return k + ':' + (get(k) ? '1' : '0'); }).join('|');
 }
 

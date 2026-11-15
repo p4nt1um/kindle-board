@@ -93,7 +93,15 @@ function safeHost(url) {
 function getJson(url, opts) {
   opts = opts || {};
   return request('GET', url, opts).then(function (r) {
-    var text = r.body.toString('utf8').replace(/^\uFEFF/, '');
+    var body = r.body;
+    var ce = String((r.headers && r.headers['content-encoding']) || '').toLowerCase();
+    // 部分上游即便声明 identity 也强制返回 gzip（和风新版 v1 实测如此），
+    // 按响应头或 gzip 魔数透明解压，其它 fetcher 无需感知。
+    if (ce.indexOf('gzip') >= 0 || (body[0] === 0x1f && body[1] === 0x8b)) {
+      try { body = require('zlib').gunzipSync(body); }
+      catch (e) { throw new Error('invalid gzip response @ ' + safeHost(url)); }
+    }
+    var text = body.toString('utf8').replace(/^\uFEFF/, '');
     try { return JSON.parse(text); }
     catch (e) { throw new Error('invalid JSON @ ' + safeHost(url)); }
   });

@@ -33,12 +33,20 @@ function probe(rawObj, extraEnv) {
   var env = Object.assign({}, process.env);
   delete env.KIMI_API_KEY;
   delete env.MOONSHOT_API_KEY;
+  delete env.QWEATHER_API_HOST;
+  delete env.QW_API_HOST;
+  delete env.QWEATHER_API_KEY;
+  delete env.QW_API_KEY;
   env.KINDLE_BOARD_SECRETS_FILE = file;
   Object.keys(extraEnv || {}).forEach(function (k) { env[k] = extraEnv[k]; });
 
   var mod = JSON.stringify(path.join(__dirname, 'secrets.js'));
   var script = 'var s=require(' + mod + ');' +
-    'process.stdout.write(JSON.stringify({v:s.get("kimiKey"),has:s.status().kimiKey,note:s.status().fileNote}))';
+    'process.stdout.write(JSON.stringify({' +
+    'v:s.get("kimiKey"),has:s.status().kimiKey,note:s.status().fileNote,' +
+    'qwHost:s.get("qweatherHost"),qwKey:s.get("qweatherKey"),' +
+    'qwHas:s.status().qweather,sig:s.signature()' +
+    '}))';
   var out = cp.execFileSync(process.execPath, ['-e', script], { env: env, encoding: 'utf8' });
   return JSON.parse(out);
 }
@@ -93,6 +101,32 @@ check('status / fileNote 只报告有无，不含密钥值', function () {
 
 check('归一化兜底不会误吃别的键（glmKey 不串到 kimiKey）', function () {
   eq(probe({ glmKey: 'FAKE_GLM' }).v, '');
+});
+
+/* ---------------- 和风天气新增键（防误删） ---------------- */
+
+check('和风 Host / Key 规范键名可读，status().qweather 与 signature 同步', function () {
+  var r = probe({ qweatherHost: 'FAKE_HOST', qweatherKey: 'FAKE_QW' });
+  eq(r.qwHost, 'FAKE_HOST', 'Host');
+  eq(r.qwKey, 'FAKE_QW', 'Key');
+  eq(r.qwHas, true, 'status().qweather');
+  eq(r.sig.indexOf('qweatherHost:1|qweatherKey:1') >= 0, true, 'signature 应含两键');
+});
+
+check('和风环境变量别名 QWEATHER_API_HOST / QWEATHER_API_KEY 可读', function () {
+  var r = probe({}, { QWEATHER_API_HOST: 'FAKE_ENV_HOST', QWEATHER_API_KEY: 'FAKE_ENV_KEY' });
+  eq(r.qwHost, 'FAKE_ENV_HOST', 'Host 别名');
+  eq(r.qwKey, 'FAKE_ENV_KEY', 'Key 别名');
+});
+
+check('和风缺任一键时 status().qweather=false', function () {
+  eq(probe({ qweatherHost: 'FAKE_HOST' }).qwHas, false, '只配 Host');
+  eq(probe({ qweatherKey: 'FAKE_QW' }).qwHas, false, '只配 Key');
+});
+
+check('redact 把日志里的 X-QW-Api-Key 值打码', function () {
+  var s = require('./secrets');
+  eq(s.redact('X-QW-Api-Key: REAL_LOOKING_SECRET_123'), 'X-QW-Api-Key: ***');
 });
 
 try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
