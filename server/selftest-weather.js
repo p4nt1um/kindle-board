@@ -8,6 +8,7 @@
  *
  * 覆盖：两套码表（Open-Meteo WMO / 和风 v1 condition.code）、昼夜取更显著天气、
  *       和风 {value,unit} 温度与 0–1 降水概率归一化、两套解析器输出同形 day、
+ *       UTC 日窗口 → 各城市当地日期（lang=zh / 中文文案兜底）、
  *       逐城「和风 → OM 主 → OM 备」回退链、请求头认证、缺凭据跳过、
  *       部分成功 __stale、DTO 字段白名单、gzip 解压、聚合器 10 分钟重试。
  *
@@ -84,6 +85,28 @@ function sampleQwDaily() {
   for (i = 0; i < 5; i++) {
     days.push({
       forecastStartTime: '2026-11-' + (12 + i) + 'T08:00+08:00',
+      temperatureMax: { value: QW_MAX[i], unit: 'C' },
+      temperatureMin: { value: QW_MIN[i], unit: 'C' },
+      daytime: {
+        condition: { text: QW_TEXT[i], code: QW_CODES[i] },
+        precipitation: { probability: QW_POP[i] }
+      },
+      nighttime: {
+        condition: { text: '晴', code: '150' },
+        precipitation: { probability: 0 }
+      }
+    });
+  }
+  return { metadata: { lang: 'zh' }, days: days };
+}
+
+/** 和风实测的 UTC 日窗口：当地日 00:00 对应的 UTC 时刻，按天递增 5 天 */
+function sampleQwUtcDaily(startDay, hourUtc) {
+  var days = [], i, d;
+  for (i = 0; i < 5; i++) {
+    d = new Date(Date.UTC(2026, 10, startDay + i, hourUtc, 0, 0));
+    days.push({
+      forecastStartTime: d.toISOString().replace('.000Z', 'Z'),
       temperatureMax: { value: QW_MAX[i], unit: 'C' },
       temperatureMin: { value: QW_MIN[i], unit: 'C' },
       daytime: {
@@ -199,7 +222,7 @@ check('昼夜两个 condition 按权重取更显著者（雷 > 雪 > 雨 > 雾 >
 check('和风逐日解析：{value,unit} 温度、0–1 概率→百分数、5 天 × 9 字段', function () {
   var days = I.parseQwDays(sampleQwDaily(), 5);
   eq(days.length, 5, '天数');
-  eq(days[0].date, '2026-11-12', '日期取 forecastStartTime 前 10 位，不做时区换算');
+  eq(days[0].date, '2026-11-12', '未传时区时回退取前 10 位');
   eq(days[0].dateShort, '11/12', '短日期');
   eq(days[0].label, '今天', '第 1 天标签');
   eq(days[2].label, '后天', '第 3 天标签');
@@ -238,6 +261,42 @@ check('forecastDays 可截断上游多给的天数', function () {
   return 'Math.min(上游长度, forecastDays)';
 });
 
+check('UTC 日窗口换算成各城市当地日期：东八区不再整体早一天', function () {
+  var ctx = makeCtx(function (url) {
+    if (!isQw(url)) return sampleOmDaily();
+    return url.indexOf('121.4737') >= 0
+      ? sampleQwUtcDaily(14, 16)   // 11/14T16:00Z = 北京 11/15 00:00
+      : sampleQwUtcDaily(15, 5);   // 11/15T05:00Z = UTC-5 11/15 00:00
+  });
+  return fetchWeather(ctx).then(function (r) {
+    eq(r.cities[0].days[0].date, '2026-11-15', '东八区首列日期');
+    eq(r.cities[0].days[0].dateShort, '11/15', '东八区短日期');
+    eq(r.cities[0].days[0].label, '今天', '首列标签');
+    eq(r.cities[0].days[4].date, '2026-11-19', '东八区第 5 天');
+    eq(r.cities[1].days[0].date, '2026-11-15', 'UTC-5 首列日期');
+    eq(r.cities[1].days[0].dateShort, '11/15', 'UTC-5 短日期');
+    return 'city.timezone 经 buildSteps → fetchOne → parseQwDays 全程透传';
+  });
+});
+
+check('localDateOf：无时区 / 无效时区 / 坏日期安全回退', function () {
+  eq(I.localDateOf('2026-11-14T16:00Z', null), '2026-11-14', '无时区回退前 10 位');
+  eq(I.localDateOf('2026-11-14T16:00Z', 'Not/AZone'), '2026-11-14', '无效时区回退');
+  eq(I.localDateOf('oops', 'Asia/Shanghai'), 'oops', '日期不可解析回退');
+  eq(I.localDateOf('2026-11-14T16:00Z', 'Asia/Shanghai'), '2026-11-15', '有效时区换算');
+  return 'Intl.RangeError 被 catch，不会击穿 Promise.all';
+});
+
+check('天气文案：中文保留 5 字上限，英文/空文案按 code 类别给中文短词', function () {
+  eq(I.qwText('雨夹雪', 404), '雨夹雪', '中文原文');
+  eq(I.qwText('很长的中文天气文案', 100), '很长的中文', '中文截 5 字');
+  eq(I.qwText('Moderate rain', 404), '雨', '英文不再截成 Moder');
+  eq(I.qwText('Sleet', 401), '雪', '英文按 4xx 归雪');
+  eq(I.qwText('', 100), '晴', '空文案按 100 归晴');
+  eq(I.qwText('', 999), '未知', '未知码');
+  return 'lang=zh 主路径 + ASCII 兜底双保险';
+});
+
 /* ---------------- 请求链构造 ---------------- */
 
 check('请求链顺序：和风 → OM 主 → OM 备，只有和风带认证头', function () {
@@ -253,14 +312,16 @@ check('请求链顺序：和风 → OM 主 → OM 备，只有和风带认证头
   return 'providerChain 逐项展开成逐城请求队列';
 });
 
-check('和风请求：路径纬度在前、days=5、X-QW-Api-Key 头，URL 不含 key', function () {
+check('和风请求：路径纬度在前、days=5&lang=zh、X-QW-Api-Key 头，URL 不含 key', function () {
   var ctx = okCtx();
   return fetchWeather(ctx).then(function () {
     var c0 = ctx.calls[0], c1 = ctx.calls[1];
-    truthy(/^https:\/\/example\.qweather\.test\/weather\/v1\/daily\/31\.2304\/121\.4737\?days=5$/.test(c0.url),
+    truthy(/^https:\/\/example\.qweather\.test\/weather\/v1\/daily\/31\.2304\/121\.4737\?days=5&lang=zh$/.test(c0.url),
       '甲城 URL 不符: ' + c0.url);
-    truthy(/\/weather\/v1\/daily\/40\.7128\/-74\.006\?days=5$/.test(c1.url),
+    truthy(/\/weather\/v1\/daily\/40\.7128\/-74\.006\?days=5&lang=zh$/.test(c1.url),
       '乙城 URL 不符: ' + c1.url);
+    truthy(c0.url.indexOf('lang=zh') >= 0 && c1.url.indexOf('lang=zh') >= 0,
+      '两城都必须显式请求中文天气文案');
     eq(c0.opts.headers['X-QW-Api-Key'], QW_KEY, '认证头');
     eq(c0.url.indexOf(QW_KEY), -1, 'key 不应拼进 URL');
     eq(c0.opts.timeoutMs, 10000, '超时');

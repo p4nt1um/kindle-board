@@ -44,6 +44,8 @@ id_ed25519
 # data/ 含 board 缓存、每日一图下载、素材池：可能带日程标题与账户余额
 data/
 public/media/
+# 真机 fbgrab 抓屏含真实地点 / 日程 / 账户余额，绝不进入公开仓库
+verify/kindle-screenshots/
 *.pid
 *.log
 *.tmp

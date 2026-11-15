@@ -16,8 +16,10 @@
  * 绝不写进 config.json、DTO 或日志；请求头用 X-QW-Api-Key。
  * 上游响应是 gzip 压缩的 JSON，由 server/http-util.js 的 getJson 透明解压。
  *
- * 日期只取 forecastStartTime 的前 10 位，不用 new Date() 换算，
- * 避免带时区的字符串在跨日时把当地预报日挪到前一天。
+ * 和风 forecastStartTime 是「当地日 00:00」对应的 UTC 时刻（如 2026-11-14T16:00Z
+ * 其实是北京时间 11/15 00:00），不能只取前 10 位，否则东八区城市整体早一天。
+ * 用城市配置的 IANA 时区把该时刻换算回当地日历日；请求带 lang=zh 取中文文案，
+ * 上游偶发仍返回英文时按 condition.code 的类别给中文短词，避免截成 Moder。
  *
  * 部分成功：只要不是全部城市成功就给结果打 __stale / __staleReason，
  * 聚合器 cleanInternal 会剥离内部字段，软分支保留旧数据、标 stale=true 并
@@ -108,6 +110,41 @@ function shortDate(iso) {
   return Number(p[1]) + '/' + Number(p[2]);
 }
 
+/** lang=zh 之外的兜底：上游偶发返回英文时按类别给中文短词，避免截成 Moder */
+var QW_FALLBACK_TEXT = {
+  sun: '晴', cloud: '多云', overcast: '阴', rain: '雨',
+  snow: '雪', fog: '雾', storm: '雷雨', na: '未知'
+};
+
+function qwText(text, code) {
+  var s = String(text || '');
+  var cat = qwCategoryOf(code);
+  if (!s || !/[^\x00-\x7F]/.test(s)) return QW_FALLBACK_TEXT[cat];
+  return s.slice(0, 5);
+}
+
+/**
+ * 和风 forecastStartTime 是「当地日 00:00」对应的 UTC 时刻，换算回城市当地日历日。
+ * 无时区、日期不可解析、时区名无效（RangeError）都回退到取前 10 位。
+ */
+function localDateOf(utcIso, tz) {
+  var raw = String(utcIso || '').slice(0, 10);
+  if (!raw || !tz) return raw;
+  var d = new Date(utcIso);
+  if (isNaN(d.getTime())) return raw;
+  try {
+    var parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(d);
+    var v = {}, i;
+    for (i = 0; i < parts.length; i++) v[parts[i].type] = parts[i].value;
+    if (!v.year || !v.month || !v.day) return raw;
+    return v.year + '-' + v.month + '-' + v.day;
+  } catch (e) {
+    return raw;
+  }
+}
+
 function categoryOf(code) {
   return CATEGORY[code] || 'na';
 }
@@ -156,7 +193,7 @@ function makeDay(date, idx, code, text, cat, max, min, pop) {
 /* ---------------- 两个 provider 的解析器 ---------------- */
 
 /** 和风 v1 /weather/v1/daily：顶层 days[] */
-function parseQwDays(j, forecastDays) {
+function parseQwDays(j, forecastDays, timezone) {
   if (!j || !j.days || !j.days.length) throw new Error('unexpected qweather response');
   var arr = j.days;
   var n = Math.min(arr.length, forecastDays);
@@ -167,14 +204,14 @@ function parseQwDays(j, forecastDays) {
     cond = qwPickCondition(d) || {};
     code = cond.code === undefined || cond.code === null ? null : Number(cond.code);
     if (!isFinite(code)) code = null;
-    text = String(cond.text || '').slice(0, 5) || ('代码 ' + code);
+    text = qwText(cond.text, code);
     pop = null;
     if (d.daytime && d.daytime.precipitation) pop = popOf(d.daytime.precipitation.probability);
     if (pop === null && d.nighttime && d.nighttime.precipitation) {
       pop = popOf(d.nighttime.precipitation.probability);
     }
     days.push(makeDay(
-      d.forecastStartTime || (d.daytime && d.daytime.forecastStartTime),
+      localDateOf(d.forecastStartTime || (d.daytime && d.daytime.forecastStartTime), timezone),
       i, code, text, qwCategoryOf(code),
       tempOf(d.temperatureMax), tempOf(d.temperatureMin), pop
     ));
@@ -210,7 +247,8 @@ function qwUrl(ctx, city, forecastDays) {
   if (!host) return null;
   return 'https://' + String(host).replace(/^https?:\/\//, '').replace(/\/+$/, '') +
     '/weather/v1/daily/' + encodeURIComponent(city.latitude) + '/' +
-    encodeURIComponent(city.longitude) + '?days=' + encodeURIComponent(forecastDays);
+    encodeURIComponent(city.longitude) + '?days=' + encodeURIComponent(forecastDays) +
+    '&lang=zh';
 }
 
 function omUrl(city, forecastDays, endpoint) {
@@ -240,7 +278,10 @@ function buildSteps(ctx, cfg, city, forecastDays, chain) {
       key = ctx.secrets && ctx.secrets.get ? ctx.secrets.get('qweatherKey') : null;
       u = qwUrl(ctx, city, forecastDays);
       if (key && u) {
-        steps.push({ url: u, parser: parseQwDays, headers: { 'X-QW-Api-Key': key } });
+        steps.push({
+          url: u, parser: parseQwDays, timezone: city.timezone,
+          headers: { 'X-QW-Api-Key': key }
+        });
       }
     } else if (chain[i] === 'open-meteo') {
       eps = omEndpoints(cfg);
@@ -285,7 +326,7 @@ function fetchOne(ctx, cfg, city, forecastDays, chain) {
       return httpOf(ctx).getJson(s.url, opts);
     }).then(function (j) {
       var days;
-      try { days = s.parser(j, forecastDays); }
+      try { days = s.parser(j, forecastDays, s.timezone); }
       catch (pe) { lastErr = errText(pe); return attempt(); }
       if (!days.length) { lastErr = 'empty forecast'; return attempt(); }
       return result(true, days, '');
@@ -348,6 +389,9 @@ module.exports.__internals = {
   makeDay: makeDay,
   qwPickCondition: qwPickCondition,
   qwUrl: qwUrl,
+  localDateOf: localDateOf,
+  qwText: qwText,
+  QW_FALLBACK_TEXT: QW_FALLBACK_TEXT,
   buildSteps: buildSteps,
   DEFAULT_CHAIN: DEFAULT_CHAIN
 };
