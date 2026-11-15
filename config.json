@@ -33,12 +33,13 @@
   "blocks": {
     "weather": {
       "enabled": true,
-      "provider": "open-meteo",
+      "provider": "qweather",
+      "providerChain": ["qweather", "open-meteo"],
       "endpoint": "https://historical-forecast-api.open-meteo.com/v1/forecast",
       "fallbackEndpoint": "https://api.open-meteo.com/v1/forecast",
       "defaultCity": "shanghai",
       "forecastDays": 5,
-      "_comment": "cities[].key 必须等于 board.zones[].id；示例坐标仅为公开城市中心点，可按需替换。2026-11-13 起主域名 api.open-meteo.com（唯一 A 记录 51.81.167.44）在国内 TCP 443 连接超时，故把可达的 historical-forecast-api 设为首选 endpoint、原主域名留作 fallbackEndpoint；两者互为兜底，任一恢复即可用。",
+      "_comment": "cities[].key 必须等于 board.zones[].id；示例坐标仅为公开城市中心点，可按需替换。天气默认按 providerChain 依次尝试：和风天气新版 v1（主）→ Open-Meteo 两个域名（备），逐城任一成功即停；任一城市失败会标 stale 并在 10 分钟内重试。和风的专属 API Host 与 Key 只放 secrets.local.json 的 qweatherHost / qweatherKey，绝不写进本文件、DTO 或日志；缺凭据时自动跳过和风，仅用 Open-Meteo。",
       "cities": [
         { "key": "shanghai", "name": "上海", "latitude": 31.2304, "longitude": 121.4737, "timezone": "Asia/Shanghai" },
         { "key": "newyork", "name": "纽约", "latitude": 40.7128, "longitude": -74.0060, "timezone": "America/New_York" }
