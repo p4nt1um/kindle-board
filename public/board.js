@@ -318,19 +318,32 @@
       h = textRow(b, 'b-agenda-hint', 'row-s');
       h.style.display = 'none';   // 只在有真实提示时显示
     },
-    /* 第六轮：额度整宽沉底，改成横向 N 个小格（默认 6），每格「名称 / 标签 / 数字」三行纵排。
+    /* 额度整宽沉底，横向 N 个小格（默认 6）。
+       单值格沿用「名称 / 标签 / 20px 大数字」三行；
+       多窗口格改为「名称 / 两列标签 / 两列数字并排一行」，靠格子的 q-single / q-dual
+       className 显隐。6 格 DOM 结构完全一致，骨架只建一次，绝不按数据重建。
        td 一律不隐藏（隐藏会破坏 table-layout:fixed 的等分列），空 provider 由渲染器填 —。 */
     quota: function (b) {
       var t = mk(b, 'table', 'q6', 'b-quota-grid');
       var tbody = mk(t, 'tbody', null, null);
       var tr = mk(tbody, 'tr', null, null);
-      var i, td, n = st.quotaRows || 6;
+      var i, td, g, gb, gr, c, n = st.quotaRows || 6;
       for (i = 0; i < n; i++) {
-        td = mk(tr, 'td', 'q-cell', 'b-quota-' + i + '-row');
+        td = mk(tr, 'td', 'q-cell q-single', 'b-quota-' + i + '-row');
         if (i === 0) td.style.borderLeft = '0';   // 首格不要分隔线，className 切换也不会丢
         mkText(td, 'div', 'q-name', 'b-quota-' + i + '-name', '');
         mkText(td, 'div', 'q-label', 'b-quota-' + i + '-label', '');
         mkText(td, 'div', 'q-num', 'b-quota-' + i + '-num', '');
+        // 两窗口：table.q2 > tbody > tr > 2 × td.q2-c，每列「标签 / 数字」两行
+        g = mk(td, 'table', 'q2', 'b-quota-' + i + '-grid');
+        gb = mk(g, 'tbody', null, null);
+        gr = mk(gb, 'tr', null, null);
+        c = mk(gr, 'td', 'q2-c', null);
+        mkText(c, 'div', 'q2-lab', 'b-quota-' + i + '-lab1', '');
+        mkText(c, 'div', 'q2-num', 'b-quota-' + i + '-num1', '');
+        c = mk(gr, 'td', 'q2-c', null);
+        mkText(c, 'div', 'q2-lab', 'b-quota-' + i + '-lab2', '');
+        mkText(c, 'div', 'q2-num', 'b-quota-' + i + '-num2', '');
       }
       textRow(b, 'b-quota-hint', 'row-s').style.display = 'none';
     },
@@ -413,30 +426,42 @@
     el.style.display = v ? '' : 'none';
   }
 
-  /** 第六轮：横向小格用。把一行 DTO 文本拆成「标签 + 纯数字」，减少文字、突出数字。
-      优先级：¥ 金额 > 剩余百分比 > 「余/剩」后的数字 > 失败或空的 —。
+  /** 横向小格用。把一行 DTO 文本拆成「标签 + 纯数字」，减少文字、突出数字。
+      优先级：结构化 windows[]（前两个窗口并排）> ¥ 金额 > 剩余百分比 > 「余/剩」> 失败或空的 —。
+      windows 是服务端增量可选字段，缺失时完整回退旧解析，旧 DTO / 重启窗口期不会白屏。
       只提取数字，原文本里的说明、错误串、凭据之类一律不进 DOM。 */
   function splitQuota(p) {
-    var r = { name: '', label: '', num: '—' };
-    var s, m;
+    var r = { name: '', dual: false, l1: '', l2: '', n1: '—', n2: '', z1: false, z2: false };
+    var s, m, w;
     if (!p) return r;
     r.name = empty(p.label || '', 5);
     if (!p.ok) return r;
+    w = p.windows;
+    if (w && w.length > 1) {
+      r.dual = true;
+      r.l1 = empty(w[0].label || '', 3);
+      r.l2 = empty(w[1].label || '', 3);
+      r.n1 = empty(w[0].text || '—', 5);
+      r.n2 = empty(w[1].text || '—', 5);
+      r.z1 = w[0].left === 0;
+      r.z2 = w[1].left === 0;
+      return r;
+    }
     s = (p.lines || []).join(' · ');
     m = /¥\s*(-?\d+(?:\.\d+)?)/.exec(s);
     if (m) {
       // 余额只保留整数（用户要求）：概览不需要小数，整数更醒目也不会贴满格宽
-      r.num = m[1].split('.')[0];
-      r.label = /可用/.test(s) ? '可用' : (/现金/.test(s) ? '现金' : '余额');
+      r.n1 = m[1].split('.')[0];
+      r.l1 = /可用/.test(s) ? '可用' : (/现金/.test(s) ? '现金' : '余额');
     } else if ((m = /(\d+(?:\.\d+)?)%/.exec(s))) {
-      r.num = m[1] + '%';
-      r.label = '剩';
+      r.n1 = m[1] + '%';
+      r.l1 = '剩';
     } else if ((m = /(?:余|剩)\s*(\d+(?:\.\d+)?(?:\s*\/\s*\d+(?:\.\d+)?)?)/.exec(s))) {
-      r.num = m[1];
-      r.label = '余';
+      r.n1 = m[1];
+      r.l1 = '余';
     }
     // 兜底：极端长数字仍限制在 7 字符，避免旧 WebKit 的 td 内溢出裁切不可靠
-    r.num = empty(r.num, 7);
+    r.n1 = empty(r.n1, 7);
     return r;
   }
 
@@ -483,16 +508,28 @@
     quota: function (blk) {
       var d = blk && blk.data;
       var list = (d && d.providers) || [];
-      var i, p, v, row, rowCls, n = st.quotaRows || 6;
+      var i, p, v, row, rowCls, e, eCls, n = st.quotaRows || 6;
       for (i = 0; i < n; i++) {
         p = list[i];
         v = splitQuota(p);
         setText(byId('b-quota-' + i + '-name'), v.name);
-        setText(byId('b-quota-' + i + '-label'), v.label);
-        setText(byId('b-quota-' + i + '-num'), v.num);
-        // 条件格式：金额低于阈值由服务端判好下发，这里只切 className、不重建 DOM
+        setText(byId('b-quota-' + i + '-label'), v.dual ? '' : v.l1);
+        setText(byId('b-quota-' + i + '-num'), v.dual ? '' : v.n1);
+        setText(byId('b-quota-' + i + '-lab1'), v.dual ? v.l1 : '');
+        setText(byId('b-quota-' + i + '-lab2'), v.dual ? v.l2 : '');
+        setText(byId('b-quota-' + i + '-num1'), v.dual ? v.n1 : '');
+        setText(byId('b-quota-' + i + '-num2'), v.dual ? v.n2 : '');
+        // 只有零值那个数字加下划线，另一个保持正常；只切 className，不重建 DOM
+        e = byId('b-quota-' + i + '-num1');
+        eCls = (v.dual && v.z1) ? 'q2-num q2-num-low' : 'q2-num';
+        if (e && e.className !== eCls) e.className = eCls;
+        e = byId('b-quota-' + i + '-num2');
+        eCls = (v.dual && v.z2) ? 'q2-num q2-num-low' : 'q2-num';
+        if (e && e.className !== eCls) e.className = eCls;
+        // 条件格式：金额 / 零窗口由服务端判好下发，这里只切格子的 className
         row = byId('b-quota-' + i + '-row');
-        rowCls = (p && p.low) ? 'q-cell q-cell-low' : 'q-cell';
+        rowCls = 'q-cell ' + (v.dual ? 'q-dual' : 'q-single') +
+                 ((p && p.low) ? ' q-cell-low' : '');
         if (row && row.className !== rowCls) row.className = rowCls;
       }
       // 减少文字：重置时间 / note 不再占一行，只有异常状态由标题栏提示

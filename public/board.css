@@ -94,6 +94,18 @@ td.q-cell { border-left:1px solid #999; text-align:center; padding:2px 3px;
          font-weight:bold; white-space:nowrap; overflow:hidden; }
 /* 低余额只在数字文字下画下划线，不画横跨整格的线（会被误读成表格线） */
 .q-cell-low .q-num { font-size:22px; text-decoration:underline; }
+/* 第八轮：多窗口 provider 在一格内并排显示两个数字。
+   单值格仍走上面的 20px 大数字；双值格用 q2 两列，标签一行、数字一行。
+   两列各约 47px，16px 等宽数字容得下 100%；零值下划线只盖文字宽度，禁用 border-bottom。 */
+table.q2 { width:100%; border-collapse:collapse; table-layout:fixed; }
+td.q2-c { width:50%; padding:0; text-align:center; vertical-align:top; }
+.q2-lab { height:15px; line-height:15px; font-size:12px; color:#666;
+          white-space:nowrap; overflow:hidden; }
+.q2-num { height:26px; line-height:26px; font-family:monospace; font-size:16px;
+          font-weight:bold; white-space:nowrap; overflow:hidden; }
+.q2-num-low { text-decoration:underline; }
+td.q-cell.q-single table.q2 { display:none; }
+td.q-cell.q-dual .q-label, td.q-cell.q-dual .q-num { display:none; }
 /* 天气：横向 N 天，每天 4 行纵排；td 不写死宽度，由 table-layout:fixed 自动均分 */
 table.w5 { width:100%; border-collapse:collapse; table-layout:fixed; }
 table.w5 td { border-left:1px solid #999999; padding:3px 4px; vertical-align:top; }

@@ -14,6 +14,7 @@
  *
  * 展示规则放在服务端判定（和日程的 today 标记一个思路），前端只切 className：
  *  - 条件格式：主金额 < board.lowBalanceThreshold（默认 500）→ provider.low=true，整行加粗
+ *  - 多窗口 provider 额外下发 windows[]（前两个窗口），任一窗口剩余 0 也标 low
  *  - 「下次重置」留在 provider.resetText，由前端把小字挂到该行下一行，不再汇总到板块底部
  */
 
@@ -128,20 +129,33 @@ function glmLines(j) {
   var limits = j && j.data && j.data.limits;
   if (!limits || !limits.length) return null;
   var parts = [];
+  var windows = [];
   var soonest = null;
-  var i, L, label, pct;
+  var i, L, label, pct, text, left;
   for (i = 0; i < limits.length && i < 3; i++) {
     L = limits[i];
     label = (L.number || '') + (UNIT[L.unit] || '');
     pct = num(L.percentage) ? Math.round(L.percentage) : null;
+    text = '';
+    left = null;
     if (num(L.remaining)) {
-      parts.push((label ? label + ' ' : '') + '余' + r2(L.remaining) + (num(L.usage) ? '/' + r2(L.usage) : ''));
+      text = '余' + r2(L.remaining) + (num(L.usage) ? '/' + r2(L.usage) : '');
+      parts.push((label ? label + ' ' : '') + text);
     } else if (pct !== null) {
-      parts.push((label ? label + ' ' : '') + '剩' + Math.max(0, 100 - pct) + '%');
+      // 上游 percentage 是「已用比例」，看板展示的是「剩余比例」
+      left = Math.max(0, 100 - pct);
+      text = left + '%';
+      parts.push((label ? label + ' ' : '') + '剩' + text);
+    }
+    // 一格只有两列，只把前两个窗口结构化下发；其余窗口仍留在 lines 里。
+    // windows 是增量可选字段，旧前端忽略它不会崩。
+    if (text && windows.length < 2) {
+      windows.push({ label: label || '窗口', left: left, text: text });
     }
     if (num(L.nextResetTime) && (soonest === null || L.nextResetTime < soonest)) soonest = L.nextResetTime;
   }
-  return { lines: parts.length ? [parts.join(' · ')] : null, resetAt: soonest };
+  return { lines: parts.length ? [parts.join(' · ')] : null, resetAt: soonest,
+           windows: windows.length > 1 ? windows : [] };
 }
 
 function glm(ctx) {
@@ -166,6 +180,7 @@ function glm(ctx) {
     if (!lines.length) lines = ['已连接，响应结构未识别'];
     return {
       id: 'glm', label: 'GLM', ok: true, lines: lines,
+      windows: (parsed && parsed.windows) || [],
       resetText: parsed && parsed.resetAt ? resetText(parsed.resetAt) : ''
     };
   }).catch(function (e) {
@@ -189,12 +204,26 @@ function primaryAmount(lines) {
   return isFinite(v) ? v : null;
 }
 
-/** 给每个 provider 打 low 标记；失败行 / 非金额行一律不打标 */
+/**
+ * 任一窗口剩余比例为 0 也算「实际不可用」。
+ * GLM 这类按窗口计额度的 provider 没有 ¥ 金额，光看 primaryAmount 会漏掉
+ * 「5 小时窗口还有 100%、但周额度已耗尽」的情况。
+ */
+function hasZeroWindow(p) {
+  if (!p || !p.ok || !p.windows) return false;
+  for (var i = 0; i < p.windows.length; i++) {
+    if (p.windows[i] && p.windows[i].left === 0) return true;
+  }
+  return false;
+}
+
+/** 给每个 provider 打 low 标记；失败行一律不打标 */
 function markLow(list, threshold) {
   var t = (typeof threshold === 'number' && isFinite(threshold)) ? threshold : LOW_DEFAULT;
   list.forEach(function (p) {
     var v = (p && p.ok) ? primaryAmount(p.lines) : null;
-    p.low = (v !== null && v < t);   // 严格「低于」，等于阈值不加粗；负数/0 也算
+    // 金额严格「低于」阈值，等于不加粗；负数 / 0 也算
+    p.low = (v !== null && v < t) || hasZeroWindow(p);
   });
   return list;
 }
@@ -239,6 +268,8 @@ module.exports = function fetch(ctx) {
 /** 仅供离线自检，不参与生产取数 */
 module.exports.__internals = {
   primaryAmount: primaryAmount,
+  glmLines: glmLines,
+  hasZeroWindow: hasZeroWindow,
   markLow: markLow,
   summarize: summarize,
   LOW_DEFAULT: LOW_DEFAULT

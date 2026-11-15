@@ -138,7 +138,8 @@
         "providers": [
           { "id": "modelA", "label": "模型甲", "ok": true, "lines": ["余额 ¥1200.00"], "low": false },
           { "id": "modelB", "label": "模型乙", "ok": true, "lines": ["可用 ¥860.00"], "low": false },
-          { "id": "modelC", "label": "模型丙", "ok": true, "lines": ["5h 剩99% · 1周 剩88%"], "low": false },
+          { "id": "modelC", "label": "模型丙", "ok": true, "lines": ["5h 剩100% · 1周 剩0%"], "low": true,
+            "windows": [{ "label": "5h", "left": 100, "text": "100%" }, { "label": "1周", "left": 0, "text": "0%" }] },
           { "id": "cloudA", "label": "云甲", "ok": true, "lines": ["余额 ¥4300.00"], "low": false },
           { "id": "cloudB", "label": "云乙", "ok": true, "lines": ["余额 ¥250.00"], "low": true },
           { "id": "cloudC", "label": "云丙", "ok": false, "lines": [], "error": "未配置凭据", "low": false }

@@ -99,5 +99,46 @@ check('「下次重置」留在 provider 上，不再汇总到板块底部 note'
   return 'note="" + provider.resetText';
 });
 
+check('GLM 多窗口：结构化产出前两个窗口及剩余比例', function () {
+  var j = { data: { limits: [
+    { number: 5, unit: 3, percentage: 0, nextResetTime: 1767225600000 },
+    { number: 1, unit: 6, percentage: 12, nextResetTime: 1767312000000 },
+    { number: 1, unit: 5, remaining: 4000, usage: 4000 }
+  ] } };
+  var r = I.glmLines(j);
+  eq(r.windows.length, 2, '只下发前两个窗口');
+  eq(r.windows[0].label, '5h', '第一窗口标签');
+  eq(r.windows[1].label, '1周', '第二窗口标签');
+  eq(r.windows[0].left, 100, '5 小时窗口剩余 100%');
+  eq(r.windows[1].left, 88, '周窗口剩余 88%');
+  eq(r.windows[0].text, '100%', '显示串');
+  eq(r.lines.length, 1, 'lines 仍是单条，兼容旧前端');
+  return 'windows 为增量字段，lines 原样保留';
+});
+
+check('任一窗口剩余 0 即标 low（周额度耗尽、5 小时仍充足）', function () {
+  var a = p(['5h 剩100% · 1周 剩0%']);
+  a.windows = [{ label: '5h', left: 100, text: '100%' }, { label: '1周', left: 0, text: '0%' }];
+  I.markLow([a], 500);
+  eq(a.low, true, '周窗口 0 应告警');
+  return 'primaryAmount 为 null 也能识别不可用';
+});
+
+check('两个窗口都非 0 时不误报', function () {
+  var a = p(['5h 剩99% · 1周 剩88%']);
+  a.windows = [{ label: '5h', left: 99, text: '99%' }, { label: '1周', left: 88, text: '88%' }];
+  I.markLow([a], 500);
+  eq(a.low, false, '都还有额度');
+  return '不影响普通多窗口显示';
+});
+
+check('失败行即使带零窗口也不打标', function () {
+  var a = p([], false);
+  a.windows = [{ label: '5h', left: 0, text: '0%' }];
+  I.markLow([a], 500);
+  eq(a.low, false, 'ok=false → low=false');
+  return '网络失败不应误报额度耗尽';
+});
+
 console.log('\n' + pass + ' 通过 / ' + fail + ' 失败');
 if (fail) process.exitCode = 1;

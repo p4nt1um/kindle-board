@@ -383,11 +383,11 @@ check('className 切换没有破坏文本节点 diff 结构', function () {
 });
 
 check('条件格式：金额低于 500 的格子切成 q-cell-low，其余保持 q-cell', function () {
-  eq(byId('b-quota-0-row').className, 'q-cell q-cell-low', 'DeepSeek ¥100.00');
-  eq(byId('b-quota-1-row').className, 'q-cell', 'Kimi ¥800.00');
-  eq(byId('b-quota-3-row').className, 'q-cell q-cell-low', '百度云 ¥200.00');
-  eq(byId('b-quota-4-row').className, 'q-cell', '失败格子不加粗');
-  return '只切 className，不重建 DOM';
+  eq(byId('b-quota-0-row').className, 'q-cell q-single q-cell-low', 'DeepSeek ¥100.00');
+  eq(byId('b-quota-1-row').className, 'q-cell q-single', 'Kimi ¥800.00');
+  eq(byId('b-quota-3-row').className, 'q-cell q-single q-cell-low', '百度云 ¥200.00');
+  eq(byId('b-quota-4-row').className, 'q-cell q-single', '失败格子不加粗');
+  return '只切 className + q-single / q-dual 形态，不重建 DOM';
 });
 
 check('减少文字：不再渲染「下次重置」小字行与底部提示行', function () {
@@ -395,6 +395,64 @@ check('减少文字：不再渲染「下次重置」小字行与底部提示行'
   eq(text(byId('b-quota-2-num')).indexOf('下次重置'), -1, '数字行混入了重置文字');
   eq(byId('b-quota-hint').style.display, 'none', '底部 hint 应保持隐藏');
   return 'resetText / note 均不占版面';
+});
+
+/* 第八轮：多窗口额度。全部用虚构示例值，不读任何真实配置。 */
+
+function dualPayload() {
+  var p = boardPayload();
+  p.blocks.quota.data.providers[2].windows = [
+    { label: '5h', left: 100, text: '100%' },
+    { label: '1周', left: 0, text: '0%' }
+  ];
+  p.blocks.quota.data.providers[2].low = true;
+  return p;
+}
+
+check('多窗口额度：两个数字并排同一行，标签可区分，6 格骨架结构一致', function () {
+  var d = run(dualPayload());
+  var i, cell, g, tr, n1, n2;
+  for (i = 0; i < 6; i++) {
+    cell = d.getElementById('b-quota-' + i + '-row');
+    eq(cell.childNodes.length, 4, '第 ' + (i + 1) + ' 格结构不一致');
+    eq(cell.childNodes[0].id, 'b-quota-' + i + '-name', '名称行');
+    eq(cell.childNodes[1].id, 'b-quota-' + i + '-label', '单值标签行');
+    eq(cell.childNodes[2].id, 'b-quota-' + i + '-num', '单值大数字行');
+    g = cell.childNodes[3];
+    eq(g.tagName, 'TABLE', '第 4 行应是 q2 双列表');
+    eq(g.className, 'q2', 'q2 类名');
+    tr = g.childNodes[0].childNodes[0];
+    eq(tr.childNodes.length, 2, 'q2 应只有两列');
+    truthy(d.getElementById('b-quota-' + i + '-num1'), '缺 num1');
+    truthy(d.getElementById('b-quota-' + i + '-num2'), '缺 num2');
+  }
+  eq(text(d.getElementById('b-quota-2-lab1')), '5h', '左列窗口标签');
+  eq(text(d.getElementById('b-quota-2-lab2')), '1周', '右列窗口标签');
+  eq(text(d.getElementById('b-quota-2-num1')), '100%', '左列数字');
+  eq(text(d.getElementById('b-quota-2-num2')), '0%', '右列数字');
+  n1 = d.getElementById('b-quota-2-num1');
+  n2 = d.getElementById('b-quota-2-num2');
+  truthy(n1.parentNode.parentNode === n2.parentNode.parentNode, '两个数字不在同一 tr');
+  eq(d.getElementById('b-quota-2-row').className, 'q-cell q-dual q-cell-low', '多窗口格形态');
+  return '名称 / 两列标签 / 两列数字并排，6 格 DOM 完全一致';
+});
+
+check('零窗口告警：只有 0% 那个数字加下划线', function () {
+  var d = run(dualPayload());
+  eq(d.getElementById('b-quota-2-num1').className, 'q2-num', '非零窗口不应加下划线');
+  eq(d.getElementById('b-quota-2-num2').className, 'q2-num q2-num-low', '零窗口应加下划线');
+  return '告警指向明确，不会出现整格双下划线';
+});
+
+check('单值格保持原 20px 大数字，旧 DTO 无 windows 时完整回退', function () {
+  var d = run(boardPayload());   // 默认多窗口 provider 不带 windows
+  eq(d.getElementById('b-quota-0-row').className, 'q-cell q-single q-cell-low', '单值格形态');
+  eq(text(d.getElementById('b-quota-0-num')), '100', '整数余额仍走 20px 大数字');
+  eq(text(d.getElementById('b-quota-0-num1')), '', '单值格的 q2 结构不显示内容');
+  eq(d.getElementById('b-quota-2-row').className, 'q-cell q-single', '无 windows 回落单值');
+  eq(text(d.getElementById('b-quota-2-num')), '99%', '旧解析取首个剩余百分比');
+  eq(text(d.getElementById('b-quota-2-label')), '剩', '旧解析标签');
+  return '服务端未重启 / 旧 DTO 也不白屏，单值数字不缩小';
 });
 
 check('CSS：日程 / 额度 / 每日正文加大，注释小字字号不变，弹窗样式齐备', function () {
@@ -465,7 +523,17 @@ check('CSS：日程 / 额度 / 每日正文加大，注释小字字号不变，�
   truthy(dRowRule && /white-space:normal/.test(dRowRule), '出处 / 图片说明小字仍被截断');
   truthy(!/display\s*:\s*(grid|flex)/.test(cssCode), '引入了 Grid/Flex');
   truthy(!/calc\(/.test(cssCode), '引入了 calc()');
-  return 'CSS1/2 兼容写法 + 正文放大 / 注释小字不变 + 6 格数字 / 大图弹窗';
+  // 第八轮：多窗口额度双列并排，零值下划线只盖文字、不画横跨整格的线
+  truthy(/table\.q2\s*\{[^}]*table-layout:fixed/.test(css), 'q2 缺少 table-layout:fixed');
+  truthy(/td\.q2-c\s*\{[^}]*width:50%/.test(css), 'q2 两列不是等宽 50%');
+  truthy(/\.q2-num\s*\{[^}]*font-family:monospace/.test(css), '并排数字未用等宽字体');
+  truthy(/\.q2-num\s*\{[^}]*font-size:16px/.test(css), '并排数字未用 16px 适配 47px 列宽');
+  truthy(/\.q2-num-low\s*\{[^}]*text-decoration:underline/.test(css), '零窗口未加下划线');
+  var low2Rule = (css.match(/\.q2-num-low\s*\{[^}]*\}/) || [''])[0];
+  truthy(low2Rule && !/border-bottom/.test(low2Rule), '零窗口又画了横跨整格的表格线');
+  truthy(/td\.q-cell\.q-single\s+table\.q2\s*\{[^}]*display:none/.test(css), '单值格未隐藏 q2');
+  truthy(/td\.q-cell\.q-dual\s+\.q-num\s*\{[^}]*display:none/.test(css), '双值格未隐藏单值大数字');
+  return 'CSS1/2 兼容写法 + 正文放大 / 注释小字不变 + 6 格数字 / 双窗口并排';
 });
 
 check('DTO 注入的假密钥不会出现在渲染文本里', function () {
