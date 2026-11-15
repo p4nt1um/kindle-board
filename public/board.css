@@ -13,7 +13,9 @@
    第六轮：额度与每日板块对调——双栏改为「日程 | 每日」（每日上文下图、图片按栏宽
    放大），额度整宽沉底并改成横向 6 个小格，每格名称/标签/纯数字三行纵排，
    减少文字、突出数字。
-   第七轮：每日文字不再截断、改为自然换行，图片说明移到图片下方。 */
+   第七轮：每日文字不再截断、改为自然换行，图片说明移到图片下方。
+   大图弹窗后续调整：去掉 2px 黑边框，宽度撑满 600px 屏宽、高度等比，
+   并在弹窗内水平 + 垂直居中。 */
 html, body { margin:0; padding:0; background:#fff; color:#000; }
 body { font-family: serif; font-size:15px; line-height:17px; }
 /* 大图弹窗用 absolute 覆盖整屏，需要 #board 作定位参照 */
@@ -134,12 +136,18 @@ table.w5 td.first { border-left:0; }
 
 /* ---------------- 大图弹窗（点按图片 → 5 秒后整页刷新） ----------------
    纯白覆盖层盖住整屏，absolute 相对 #board；不用 fixed / 半透明 / 动画。
-   整页 reload 后弹窗随页面销毁，无需单独关窗逻辑。 */
+   整页 reload 后弹窗随页面销毁，无需单独关窗逻辑。
+   图片无边框（用户要求）：width:100% 撑满 600px 屏宽、height:auto 等比缩放；
+   居中靠 table.lb-stage + td vertical-align:middle —— 旧 WebKit 没有 Flex/Grid，
+   也不用 transform / object-fit。stage 高度 = 800 - tip(25) - hint(27) = 748。 */
 .lb { position:absolute; left:0; top:0; width:600px; height:800px;
       background:#fff; z-index:10; }
 .lb-tip { height:24px; line-height:24px; padding-left:6px; font-size:13px;
           color:#000; border-bottom:1px solid #000; }
-.lb-img { display:block; width:560px; margin:18px 20px 0 20px; border:2px solid #000; }
+table.lb-stage { width:100%; height:748px; border-collapse:collapse;
+                 border-spacing:0; table-layout:fixed; }
+td.lb-stage-cell { padding:0; text-align:center; vertical-align:middle; }
+.lb-img { display:block; width:100%; height:auto; border:0; margin:0 auto; }
 .lb-hint { margin:10px 20px 0 20px; font-size:12px; color:#333; }
 
 /* ---------------- 时钟右侧：当地当天天气 ----------------

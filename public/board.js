@@ -598,7 +598,12 @@
     var box = mk(host, 'div', 'lb', 'b-lightbox');
     box.style.display = 'none';
     mkText(box, 'div', 'lb-tip', 'b-lightbox-tip', '查看大图 · 5 秒后自动刷新页面');
-    var big = mk(box, 'img', 'lb-img', 'b-lightbox-img');
+    /* 旧 WebKit 没有 Flex / Grid，弹窗内垂直居中只能用 table + vertical-align:middle */
+    var stage = mk(box, 'table', 'lb-stage', 'b-lightbox-stage');
+    var tbody = mk(stage, 'tbody', null, null);
+    var tr = mk(tbody, 'tr', null, null);
+    var cell = mk(tr, 'td', 'lb-stage-cell', null);
+    var big = mk(cell, 'img', 'lb-img', 'b-lightbox-img');
     big.alt = '';
     mkText(box, 'div', 'lb-hint', 'b-lightbox-hint', '点按任意处可立即刷新');
     box.onclick = function () { doReload(); };

@@ -491,7 +491,16 @@ check('CSS：日程 / 额度 / 每日正文加大，注释小字字号不变，�
   truthy(/\.w5-pop\s*\{[^}]*font-size:12px/.test(css), '降水概率等注释小字被改动');
   truthy(/#board\s*\{[^}]*position:relative/.test(css), '弹窗缺少定位参照');
   truthy(/\.lb\s*\{[^}]*position:absolute/.test(css), '大图弹窗未用 absolute 覆盖层');
-  truthy(/\.lb-img\s*\{[^}]*width:560px/.test(css), '大图未放大');
+  // 大图弹窗：无边框 + 撑满 600px 屏宽 + 高度等比 + table 垂直居中（防回滚）
+  truthy(/\.lb-img\s*\{[^}]*width:100%/.test(css), '大图未撑满屏宽');
+  truthy(/\.lb-img\s*\{[^}]*height:auto/.test(css), '大图高度未等比自适应');
+  truthy(/\.lb-img\s*\{[^}]*margin:0 auto/.test(css), '大图未水平居中');
+  var lbImgRule = (css.match(/\.lb-img\s*\{[^}]*\}/) || [''])[0];
+  var lbBorder = lbImgRule.match(/border\s*:\s*([^;}]+)/);
+  truthy(lbImgRule && (!lbBorder || /^0$/.test(lbBorder[1].trim())),
+    '大图又出现边框（只允许 border:0）');
+  truthy(/table\.lb-stage\s*\{[^}]*height:748px/.test(css), '大图居中舞台高度缺失');
+  truthy(/td\.lb-stage-cell\s*\{[^}]*vertical-align:middle/.test(css), '大图未垂直居中');
   // 第四轮：右下角缩略图的黑边框已按用户要求移除，防止回滚
   var imgRule = (css.match(/#b-daily-img\s*\{[^}]*\}/) || [''])[0];
   truthy(imgRule && !/border\s*:/.test(imgRule), '右下角缩略图又出现边框');
@@ -688,6 +697,23 @@ check('无图时图片隐藏、有图时显示且可点；右下角不放任何�
   })(d.root);
   truthy(!/点按查看大图|操作提示|查看大图 \/ 刷新/.test(all.join('')), '页面仍残留操作提示文字');
   return '只保留图片本身作为点按区，无任何提示文案';
+});
+
+check('大图弹窗：图片挂在垂直居中的 table 单元格里（旧 WebKit 无 Flex/Grid）', function () {
+  var d = run(boardPayload());
+  var stage = d.getElementById('b-lightbox-stage');
+  var big = d.getElementById('b-lightbox-img');
+  truthy(stage, '缺少居中舞台 table');
+  eq(stage.tagName, 'TABLE', '舞台应是 table');
+  eq(stage.className, 'lb-stage', '舞台 className 不对');
+  var cell = big.parentNode;
+  truthy(cell, '大图没有父节点');
+  eq(cell.tagName, 'TD', '大图应直接放在 td 里');
+  eq(cell.className, 'lb-stage-cell', '居中单元格 className 不对');
+  eq(cell.parentNode.tagName, 'TR', '单元格父节点应是 tr');
+  eq(cell.parentNode.parentNode.tagName, 'TBODY', 'tbody 层级缺失');
+  eq(cell.parentNode.parentNode.parentNode, stage, 'table 层级不对');
+  return 'table > tbody > tr > td.lb-stage-cell > img';
 });
 
 check('点按右下角图片：弹大图、注册 5 秒定时器、到点整页刷新', function () {
