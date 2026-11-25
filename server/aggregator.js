@@ -13,6 +13,9 @@
  *   - realtime 板块（clock/lunar）每次请求时同步重算，不进缓存队列
  *
  * 浏览器只需 XHR 拉这份 JSON，不整页 reload；服务端也绝不把上游 URL / key / 凭据写进来。
+ *
+ * 日志策略：常态成功刷新不写日志；异常、软降级、stale↔ok 状态翻转、启动、
+ * 凭据变化一律写 data/board.log（见 logger.js），且不受 quiet 门控吞掉。
  */
 
 var fs = require('fs');
@@ -21,6 +24,7 @@ var cfg = require('../config.json');
 var blocks = require('./blocks');
 var secrets = require('./secrets');
 var http = require('./http-util');
+var logger = require('./logger');
 
 /* 刷新令牌：每次生成 DTO 都重读这个纯文本文件（不缓存）。改完前端代码只需改这一行，
    无需重启服务、无需碰 Kindle，浏览器最多 5 分钟 poll 到变化就整页重载拿新版 CSS/JS。
@@ -44,7 +48,7 @@ var ctx = {
   cfg: cfg,
   secrets: secrets,
   http: http,
-  log: function (s) { console.log(s); }
+  log: function (s) { logger.info(String(s)); }
 };
 
 function blank() {
@@ -72,9 +76,13 @@ function refreshOne(id, quiet) {
   var e = state[id];
   if (!b || !e || e.inflight || b.realtime) return Promise.resolve(null);
 
+  // quiet 仅为兼容调用签名保留：日志改由事件重要性决定，异常一律记录。
+  // 定时刷新走 quiet=true，过去会把 stale / degraded 一起吞掉，正是可观测性盲区。
   e.inflight = true;
   e.lastAttemptAt = Date.now();
   var t0 = Date.now();
+  var wasStale = e.stale;
+  var hadData = e.updatedAt > 0;   // 区分「真恢复」与「服务刚启动的首次取数」
 
   return Promise.resolve()
     .then(function () { return b.fetcher(ctx); })
@@ -82,6 +90,7 @@ function refreshOne(id, quiet) {
       var soft = !!(raw && raw.__stale);
       var reason = raw && raw.__staleReason ? String(raw.__staleReason) : '上游降级';
       var data = cleanInternal(raw);
+      var ms = Date.now() - t0;
 
       e.inflight = false;
       if (soft) {
@@ -90,14 +99,15 @@ function refreshOne(id, quiet) {
         e.ok = true;
         e.stale = true;
         e.error = reason;
-        if (!quiet) console.log('[board] ' + id + ' degraded (' + (Date.now() - t0) + 'ms): ' + reason);
+        logger.warn('[board] ' + id + ' degraded (' + ms + 'ms): ' + reason);
       } else {
         e.data = data;
         e.ok = true;
         e.stale = false;
         e.error = '';
         e.updatedAt = Date.now();
-        if (!quiet) console.log('[board] ' + id + ' ok (' + (Date.now() - t0) + 'ms)');
+        // 常态成功不写；只记「曾成功 → 异常 → 恢复」这一状态翻转
+        if (wasStale && hadData) logger.info('[board] ' + id + ' recovered (' + ms + 'ms)');
       }
       return e;
     })
@@ -106,7 +116,7 @@ function refreshOne(id, quiet) {
       e.ok = e.data !== null;      // 有旧内容就仍然可展示
       e.stale = true;
       e.error = http.errText(err);
-      if (!quiet) console.warn('[board] ' + id + ' stale (' + (Date.now() - t0) + 'ms): ' + e.error);
+      logger.warn('[board] ' + id + ' stale (' + (Date.now() - t0) + 'ms): ' + e.error);
       return e;
     });
 }
@@ -122,7 +132,7 @@ function refreshAll(quiet) {
 function checkCredentials() {
   var sig = secrets.signature();
   if (lastCredSig && sig !== lastCredSig) {
-    console.log('[board] 凭据状态变化 → 立即重取 agenda / quota / weather');
+    logger.info('[board] 凭据状态变化 → 立即重取 agenda / quota / weather');
     // weather 也依赖凭据（和风 Host / Key），轮换后同样要立即重取，别干等下次 TTL
     ['agenda', 'quota', 'weather'].forEach(function (id) { if (state[id]) refreshOne(id, false); });
   }
@@ -145,6 +155,7 @@ function tick() {
     if (e.updatedAt > 0 && !e.stale && (now - e.updatedAt) > ttl * staleRatio) {
       e.stale = true;
       e.error = '已超过 ' + Math.round(ttl * staleRatio / 3600000) + ' 小时未成功更新';
+      logger.warn('[board] ' + b.id + ' expired: ' + e.error);
     }
     if (e.inflight) return;
     // 只要 stale 就 10 分钟重试，包含「从未成功过（updatedAt=0）」的情况。
@@ -156,10 +167,16 @@ function tick() {
 }
 
 function start() {
-  var budget = blocks.validateBudget();   // 超预算直接抛错，服务不启动
+  var budget;
+  try {
+    budget = blocks.validateBudget();   // 超预算直接抛错，服务不启动
+  } catch (e) {
+    logger.error('[board] 启动失败: ' + (e && e.message ? e.message : 'budget'));
+    throw e;
+  }
   init();
-  console.log('[board] 单屏预算: ' + budget.used + '/' + budget.budget + ' rows @ ' + budget.rowPx + 'px');
-  console.log('[board] 板块: ' + blocks.list().map(function (b) { return b.id + '(' + b.rows + ')'; }).join(' + '));
+  logger.info('[board] 单屏预算: ' + budget.used + '/' + budget.budget + ' rows @ ' + budget.rowPx + 'px');
+  logger.info('[board] 板块: ' + blocks.list().map(function (b) { return b.id + '(' + b.rows + ')'; }).join(' + '));
   lastCredSig = secrets.signature();
   refreshAll(false);
   tickTimer = setInterval(tick, 30000);
