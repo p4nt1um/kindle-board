@@ -10,7 +10,9 @@
  * 约束：
  *   - 每天最多一封：用 data/quota-alert-sent 记录本地日期，当天已发就直接退出。
  *   - 无警示不发；额度板块整体不可用时也不发，避免误报。
- *   - 所有邮箱 / 主机 / 凭据都从环境变量读，脚本与仓库里不含任何真实值。
+ *   - 所有邮箱 / 主机 / 凭据 / 署名都从环境变量读，脚本与仓库里不含任何真实值。
+ *   - 收件人（KB_MAIL_TO）与抄送（KB_MAIL_CC）可各填多个，既写进 MIME 头，
+ *     也逐个下发给 curl --mail-rcpt，确保抄送人真正收到。
  *   - 密码经 --netrc-file 传给 curl，不出现在进程命令行或日志里。
  *   - 邮件走 UTF-8 + Base64（RFC 2047 标题），避免中文乱码。
  */
@@ -27,6 +29,8 @@ var ROOT = path.join(__dirname, '..');
 var MARK = process.env.KB_ALERT_MARK || path.join(ROOT, 'data', 'quota-alert-sent');
 var BOARD_URL = process.env.KB_BOARD_URL || 'http://127.0.0.1:8787/api/board.json';
 var RECHARGE = Number(process.env.KB_ALERT_RECHARGE || 2000);
+// 落款署名可配置：仓库里只放通用默认值，真实署名由部署机环境变量提供
+var SIGNER = process.env.KB_ALERT_SIGNER || 'Kindle看板';
 
 /* ---------------- 小工具 ---------------- */
 
@@ -46,6 +50,23 @@ function required(name) {
   var v = process.env[name];
   if (!v) fail('缺少环境变量 ' + name);
   return String(v);
+}
+
+/** 多个地址用逗号 / 分号（中英文）/ 空白分隔；校验格式，避免把畸形值写进邮件头 */
+function splitRecipients(s) {
+  var parts = String(s || '').split(/[,;，；\s]+/);
+  var out = [], i, a;
+  for (i = 0; i < parts.length; i++) {
+    a = parts[i].trim();
+    if (!a) continue;
+    if (!/^[^\s@,;]+@[^\s@,;]+$/.test(a)) fail('收件人地址格式非法');
+    out.push(a);
+  }
+  return out;
+}
+
+function headerList(v) {
+  return Array.isArray(v) ? v.join(', ') : String(v || '');
 }
 
 /** 与服务端 primaryAmount 同规则：展示文本里第一个 ¥ 金额 */
@@ -91,6 +112,8 @@ function buildMail(alerts, all) {
     : nameOf(lead) + '余额' + Math.round(amount) + '元，申请充值 ' + RECHARGE + '元';
 
   var body = [];
+  body.push('老板们好，');
+  body.push('');
   body.push('【余额不足】');
   alerts.forEach(function (p) {
     var a = amountOf(p);
@@ -98,14 +121,14 @@ function buildMail(alerts, all) {
     body.push('- ' + nameOf(p) + '：' + desc + '，已低于警示阈值，需要充值。');
   });
   body.push('');
-  body.push('申请充值 ' + RECHARGE + ' 元，请协助处理。');
+  body.push('申请充值 ' + RECHARGE + ' 元，请老板批准为感。');
   body.push('');
   body.push('【其它账号余额概览】');
   var others = all.filter(function (p) { return alerts.indexOf(p) < 0; });
   if (!others.length) body.push('（无其它账号）');
   others.forEach(function (p) { body.push('- ' + brief(p)); });
   body.push('');
-  body.push('本邮件由 Kindle 看板自动发出，每天最多一封；无警示则不发送。');
+  body.push('本邮件由' + SIGNER + '自动发出，每天最多一封；无警示则不发送。');
   return { subject: subject, body: body.join('\n') };
 }
 
@@ -141,21 +164,21 @@ function encodeSubject(s) {
   }).join('\r\n ');
 }
 
-/** RFC 822 + RFC 2047：中文标题编码、正文 Base64，补 Date 头提高投递率 */
-function mime(subject, body, from, to) {
+/** RFC 822 + RFC 2047：中文标题编码、正文 Base64，Cc 与 Date 头齐备 */
+function mime(subject, body, from, to, cc) {
   var wrapped = b64(body).replace(/(.{76})/g, '$1\r\n').replace(/\r\n$/, '');
-  return [
+  var headers = [
     'From: ' + from,
-    'To: ' + to,
+    'To: ' + headerList(to),
     'Date: ' + new Date().toUTCString(),
     'Subject: ' + encodeSubject(subject),
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8',
-    'Content-Transfer-Encoding: base64',
-    '',
-    wrapped,
-    ''
-  ].join('\r\n');
+    'Content-Transfer-Encoding: base64'
+  ];
+  var ccText = headerList(cc);
+  if (ccText) headers.splice(2, 0, 'Cc: ' + ccText);
+  return headers.concat(['', wrapped, '']).join('\r\n');
 }
 
 /* ---------------- 去重与发送 ---------------- */
@@ -170,22 +193,31 @@ function markSent(day) {
   fs.writeFileSync(MARK, day + '\n', { mode: 0o600 });
 }
 
-function send(mailText) {
-  var host = required('KB_SMTP_HOST');
-  var port = required('KB_SMTP_PORT');
-  var from = required('KB_SMTP_FROM');
-  var to = required('KB_MAIL_TO');
+/** 信封收件人 = To + Cc，每个都下发给 curl，抄送人才会真正收到 */
+function smtpArgs(host, port, from, rcpts, netrcFile) {
   var args = [
     '--silent', '--show-error', '--fail',
     '--url', 'smtps://' + host + ':' + port,
     '--ssl-reqd',
-    '--mail-from', from,
-    '--mail-rcpt', to,
-    '--upload-file', '-',
-    '--max-time', '30'
+    '--mail-from', from
   ];
+  rcpts.forEach(function (r) { args.push('--mail-rcpt', r); });
+  args.push('--upload-file', '-', '--max-time', '30');
   // 凭据走 netrc，绝不拼进 argv
-  if (process.env.KB_SMTP_NETRC) args.push('--netrc-file', process.env.KB_SMTP_NETRC);
+  if (netrcFile) args.push('--netrc-file', netrcFile);
+  return args;
+}
+
+function addressBook() {
+  var to = splitRecipients(required('KB_MAIL_TO'));
+  var cc = splitRecipients(process.env.KB_MAIL_CC || '');
+  if (!to.length) fail('KB_MAIL_TO 没有有效收件人');
+  return { to: to, cc: cc, all: to.concat(cc) };
+}
+
+function send(mailText, rcpts) {
+  var args = smtpArgs(required('KB_SMTP_HOST'), required('KB_SMTP_PORT'),
+    required('KB_SMTP_FROM'), rcpts, process.env.KB_SMTP_NETRC);
   cp.execFileSync('curl', args, {
     input: mailText,
     encoding: 'utf8',
@@ -207,19 +239,25 @@ function handle(payload) {
   if (alreadySent(day)) { console.log('[quota-alert] 当日已发送，跳过'); return; }
 
   var mail = buildMail(alerts, ps);
+  var book = addressBook();
+  var bodyOk = mail.body.indexOf('老板们好，') === 0 &&
+    mail.body.indexOf('请老板批准为感') > 0 &&
+    mail.body.indexOf('自动发出，每天最多一封') > 0;
   if (DRY) {
-    // 只输出结构摘要：不打印余额、邮箱或任何凭据
+    // 只输出结构摘要：不打印余额、邮箱、署名或任何凭据
     console.log('[quota-alert] dryRun=true alerts=' + alerts.length +
       ' others=' + (ps.length - alerts.length) +
       ' subjectBytes=' + Buffer.byteLength(mail.subject, 'utf8') +
       ' bodyBytes=' + Buffer.byteLength(mail.body, 'utf8') +
-      ' recipientConfigured=' + Boolean(process.env.KB_MAIL_TO) +
+      ' to=' + book.to.length + ' cc=' + book.cc.length +
+      ' envelope=' + book.all.length + ' bodyOk=' + bodyOk +
+      ' signerConfigured=' + Boolean(process.env.KB_ALERT_SIGNER) +
       ' wouldSend=true');
     return;
   }
 
   try {
-    send(mime(mail.subject, mail.body, required('KB_SMTP_FROM'), required('KB_MAIL_TO')));
+    send(mime(mail.subject, mail.body, required('KB_SMTP_FROM'), book.to, book.cc), book.all);
     markSent(day);
     logger.info('[alert] 已发送额度提醒邮件（当日不再重发）');
     console.log('[quota-alert] 已发送并记录当日标记');
@@ -268,17 +306,38 @@ function runSelfTest() {
   ok(amountOf(providers[2]) === null, '百分比账号无金额');
   var mail = buildMail(alerts, providers);
   ok(/乙账号余额128元，申请充值 2000元$/.test(mail.subject), '标题取余额最低者并带充值额');
-  ok(mail.body.indexOf('【余额不足】') === 0, '正文先讲不足');
+  ok(mail.body.indexOf('老板们好，') === 0, '正文抬头为老板们好');
+  ok(mail.body.indexOf('【余额不足】') > 0, '抬头之后先讲不足');
   ok(mail.body.indexOf('【其它账号余额概览】') > 0, '正文再讲其它账号');
   ok(mail.body.indexOf('丁账号') > mail.body.indexOf('【其它账号余额概览】'), '正常账号归入概览');
   ok(mail.body.indexOf('1周 剩0%') > 0, '零窗口告警有说明');
   ok(mail.body.indexOf('申请充值 2000 元') > 0, '正文含充值金额');
+  ok(mail.body.indexOf('请老板批准为感') > 0, '措辞改为请老板批准为感');
+  ok(mail.body.indexOf('请协助处理') < 0, '旧措辞已移除');
+  ok(mail.body.indexOf('本邮件由' + SIGNER + '自动发出，每天最多一封；无警示则不发送。') > 0,
+    '落款保留自动发送与每日去重说明');
 
   var enc = mime(mail.subject, mail.body, 'from@example.test', 'to@example.test');
   ok(enc.indexOf('Subject: =?UTF-8?B?') > 0, '标题 RFC 2047 编码');
   ok(enc.indexOf('Content-Transfer-Encoding: base64') > 0, '正文 Base64');
   ok(enc.indexOf('Content-Type: text/plain; charset=UTF-8') > 0, '正文声明 UTF-8');
   ok(/^Date: .+ GMT$/m.test(enc), '邮件带 RFC 822 Date 头');
+  ok(enc.indexOf('Cc:') < 0, '无抄送时不写空 Cc 头');
+
+  var to = splitRecipients('a@example.test;b@example.test，c@example.test; d@example.test');
+  var cc = splitRecipients('cc1@example.test；cc2@example.test');
+  ok(to.length === 4, '多个收件人支持中英文分号 / 逗号 / 空白分隔');
+  ok(cc.length === 2, '抄送地址可配多个');
+  var encCc = mime(mail.subject, mail.body, 'from@example.test', to, cc);
+  ok(/^To: a@example\.test, b@example\.test, c@example\.test, d@example\.test$/m.test(encCc),
+    'To 头列出全部收件人');
+  ok(/^Cc: cc1@example\.test, cc2@example\.test$/m.test(encCc), 'Cc 头列出全部抄送人');
+  var args = smtpArgs('mail.example.test', '465', 'from@example.test',
+    to.concat(cc), '/tmp/kb.netrc');
+  var rcptCount = 0, ai;
+  for (ai = 0; ai < args.length; ai++) { if (args[ai] === '--mail-rcpt') rcptCount++; }
+  ok(rcptCount === 6, 'curl 对每个 To / Cc 都下发 --mail-rcpt');
+  ok(args[args.indexOf('--netrc-file') + 1] === '/tmp/kb.netrc', 'netrc 只走文件参数');
 
   var longSubject = '甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥余额326元，申请充值 2000元';
   var words = encodeSubject(longSubject).split('\r\n ');
@@ -303,7 +362,7 @@ function runSelfTest() {
   ok(fs.readdirSync(tmp).length === 1, '重复写不产生多余文件');
 
   fs.rmSync(tmp, { recursive: true, force: true });
-  console.log('  [ok] 邮件提醒自检：标题 / 正文结构 / 编码 / 当日去重  → ' + pass + ' 项');
+  console.log('  [ok] 邮件提醒自检：标题 / 正文 / 编码 / 收件人 / 抄送 / 当日去重  → ' + pass + ' 项');
   console.log('\n  1 通过 / 0 失败');
 }
 

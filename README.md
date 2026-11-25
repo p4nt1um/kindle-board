@@ -190,11 +190,12 @@ npm start              # 先前台跑通
 
 - 触发：systemd 用户级 timer，本地时间每天 09:15；任一账号 `provider.low === true` 才发，**无警示不发**，额度板块整体不可用时也不发（避免误报）。
 - 去重：`data/quota-alert-sent` 记录本地日期，当天已发直接退出；`Persistent=false`，设备关机错过后不跨日补发。
-- 内容：标题取余额最低的告警账号（形如「某账号余额 N 元，申请充值 2000 元」），正文先讲余额不足，再概要其它账号。标题按 RFC 2047 拆词、正文 Base64/UTF-8，避免中文乱码。
+- 内容：标题取余额最低的告警账号（形如「某账号余额 N 元，申请充值 2000 元」），正文以抬头开场、先讲余额不足，再概要其它账号，落款说明自动发送与每日去重规则。标题按 RFC 2047 拆词、正文 Base64/UTF-8，避免中文乱码。
+- 收件人与抄送可各填多个（中英文逗号 / 分号分隔）：既写进 `To` / `Cc` 头，也逐个下发给 SMTP 信封，保证抄送人真正收到；没有抄送时不会写空的 `Cc` 头。
 - 凭据：SMTP 主机 / 端口 / 发件人 / 收件人放 600 权限的 `EnvironmentFile`，密码放单独 600 权限的 netrc，通过 `curl --netrc-file` 传入，**不进命令行、日志和仓库**。
 - 部署：把 `deploy/kindle-board-quota-alert.{service,timer}` 里的 `USER` 换成实际用户名，复制到 `~/.config/systemd/user/`，再执行 `systemctl --user daemon-reload && systemctl --user enable --now kindle-board-quota-alert.timer`。无人登录仍能触发需开启 `loginctl enable-linger <用户>`。
 
-环境变量（模板不含任何真实值）：`KB_SMTP_HOST`、`KB_SMTP_PORT`、`KB_SMTP_FROM`、`KB_MAIL_TO`、`KB_SMTP_NETRC`；可选 `KB_ALERT_RECHARGE`（默认 2000）、`KB_BOARD_URL`、`KB_ALERT_MARK`。
+环境变量（模板不含任何真实值）：`KB_SMTP_HOST`、`KB_SMTP_PORT`、`KB_SMTP_FROM`、`KB_MAIL_TO`、`KB_SMTP_NETRC`；可选 `KB_MAIL_CC`（抄送，多个地址用逗号 / 分号分隔）、`KB_ALERT_SIGNER`（落款署名，默认 `Kindle看板`）、`KB_ALERT_RECHARGE`（默认 2000）、`KB_BOARD_URL`、`KB_ALERT_MARK`。部署机上的真实邮箱与署名只存在 600 权限的 `EnvironmentFile` 里。**修改该文件后要执行一次 `systemctl --user daemon-reload`**，否则 systemd 仍使用缓存的旧环境变量。
 
 验证顺序：先 `node scripts/quota-alert.js --self-test`（离线），再带环境变量跑 `node scripts/quota-alert.js --dry-run`（只输出结构摘要，**不发送、不写去重标记**），确认后再真实发送。发送成功 / 失败会写进 `data/board.log`，但不记邮箱与凭据。
 
