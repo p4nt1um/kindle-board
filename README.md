@@ -166,7 +166,8 @@ npm start              # 先前台跑通
 | --- | --- |
 | `npm run check` | 全部 JS 语法检查 |
 | `npm run check:secrets` | 扫描会被提交的文件是否含疑似凭据（只报文件名/类型，不打印值） |
-| `npm run selftest` | 多套离线回归：日程解析、三家云签名、额度条件格式（含多窗口零额度告警）、前端 DOM（含双栏配对、额度 6 格拆字、布局回滚、双地区天气切换与主动刷新）、多城市天气取数（两套码表、`providerChain` 三级回退、gzip 解压、部分成功 `__stale`、UTC 日窗口换算与中文文案兜底）、凭据键名兼容、日志稀疏写入与容量轮转 |
+| `npm run selftest` | 多套离线回归：日程解析、三家云签名、额度条件格式（含多窗口零额度告警）、前端 DOM（含双栏配对、额度 6 格拆字、布局回滚、双地区天气切换与主动刷新）、多城市天气取数（两套码表、`providerChain` 三级回退、gzip 解压、部分成功 `__stale`、UTC 日窗口换算与中文文案兜底）、凭据键名兼容、日志稀疏写入与容量轮转、每日提醒邮件的标题 / 正文 / 编码 / 当日去重 |
+| `npm run selftest:alert` | 只跑提醒邮件离线自检，不联网、不读凭据、不发信 |
 | `npm run preflight` | 运行时环境自检，不联网、不读凭据 |
 | `npm run diagnose` | 联网诊断 CalDAV 结构（不输出凭据与日程标题） |
 | `npm run diagnose:baidu` | 诊断百度云余额签名链路（输出脱敏） |
@@ -182,6 +183,20 @@ npm start              # 先前台跑通
 - `data/` 已被 `.gitignore` 排除；systemd `UMask=0077` 保证文件仅属主可读写（600）。
 - `KINDLE_BOARD_LOG=0` 可完全关闭；`npm run selftest:log` 验证格式、轮转与容量上限。
 - 日志不入库、不上报，排查时直接 SSH 到 Pi 查看即可。
+
+### AI 额度每日提醒邮件（可选）
+
+看板本身不主动推送。如需**每天最多一封**的余额提醒，可启用仓库自带的定时任务：
+
+- 触发：systemd 用户级 timer，本地时间每天 09:15；任一账号 `provider.low === true` 才发，**无警示不发**，额度板块整体不可用时也不发（避免误报）。
+- 去重：`data/quota-alert-sent` 记录本地日期，当天已发直接退出；`Persistent=false`，设备关机错过后不跨日补发。
+- 内容：标题取余额最低的告警账号（形如「某账号余额 N 元，申请充值 2000 元」），正文先讲余额不足，再概要其它账号。标题按 RFC 2047 拆词、正文 Base64/UTF-8，避免中文乱码。
+- 凭据：SMTP 主机 / 端口 / 发件人 / 收件人放 600 权限的 `EnvironmentFile`，密码放单独 600 权限的 netrc，通过 `curl --netrc-file` 传入，**不进命令行、日志和仓库**。
+- 部署：把 `deploy/kindle-board-quota-alert.{service,timer}` 里的 `USER` 换成实际用户名，复制到 `~/.config/systemd/user/`，再执行 `systemctl --user daemon-reload && systemctl --user enable --now kindle-board-quota-alert.timer`。无人登录仍能触发需开启 `loginctl enable-linger <用户>`。
+
+环境变量（模板不含任何真实值）：`KB_SMTP_HOST`、`KB_SMTP_PORT`、`KB_SMTP_FROM`、`KB_MAIL_TO`、`KB_SMTP_NETRC`；可选 `KB_ALERT_RECHARGE`（默认 2000）、`KB_BOARD_URL`、`KB_ALERT_MARK`。
+
+验证顺序：先 `node scripts/quota-alert.js --self-test`（离线），再带环境变量跑 `node scripts/quota-alert.js --dry-run`（只输出结构摘要，**不发送、不写去重标记**），确认后再真实发送。发送成功 / 失败会写进 `data/board.log`，但不记邮箱与凭据。
 
 ---
 
@@ -222,7 +237,8 @@ kindle-board/
 │   ├── check-secrets.js    # 提交前凭据扫描
 │   └── selftest-*.js       # 离线回归
 ├── public/                 # ES5 哑终端页面与样式
-├── deploy/                 # systemd / env / NTP 模板
+├── scripts/                # 运维脚本（每日额度提醒邮件）
+├── deploy/                 # systemd / env / NTP 模板（含 quota-alert.service / .timer）
 ├── config.json             # 非敏感配置
 └── secrets.example.json    # 空凭据模板
 ```

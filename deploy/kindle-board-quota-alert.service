@@ -1,0 +1,21 @@
+# 使用前把路径里的 USER 换成实际用户名；模板刻意不含任何真实的邮箱、主机或密码。
+# 复制到 ~/.config/systemd/user/kindle-board-quota-alert.service 后执行：
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now kindle-board-quota-alert.timer
+# SMTP 主机 / 账号 / 密码只放在 600 权限的 EnvironmentFile 与 netrc 文件里，绝不入库。
+# 脚本内部按本地日期去重，每天最多发一封；无警示则直接退出。
+[Unit]
+Description=Kindle Board - daily AI quota alert (at most one mail per day)
+After=kindle-board.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/USER/kindle-board
+EnvironmentFile=/home/USER/.config/kindle-board/env
+ExecStart=/home/USER/.local/node/bin/node /home/USER/kindle-board/scripts/quota-alert.js
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kindle-board-alert

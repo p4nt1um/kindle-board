@@ -1,0 +1,14 @@
+# 每天 09:15 检查一次；错过不补发（Persistent=false），避免跨日补发造成重复。
+# 复制到 ~/.config/systemd/user/kindle-board-quota-alert.timer 后：
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now kindle-board-quota-alert.timer
+[Unit]
+Description=Kindle Board - daily 09:15 AI quota alert timer
+
+[Timer]
+OnCalendar=*-*-* 09:15:00
+Persistent=false
+Unit=kindle-board-quota-alert.service
+
+[Install]
+WantedBy=timers.target
